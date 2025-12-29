@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SessionManager.h"
 #include "Shared.h"
 #include "spdlog/spdlog.h"
 #include <cerrno>
@@ -20,7 +21,54 @@ protected:
   bool is_owner;
 
 public:
-  Manager(bool owner = false) : is_owner(owner) { initResources(); }
+  std::unique_ptr<SessionManager> session_store;
+
+  Manager(bool owner = false) : is_owner(owner) {
+    int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
+
+    shm_id = shmget(SHM_KEY_ID, sizeof(SharedState), flags);
+    if (shm_id == -1) {
+      spdlog::critical("shmget failed: {}", std::strerror(errno));
+      exit(errno);
+    }
+
+    shm = (SharedState *)shmat(shm_id, nullptr, 0);
+    if (shm == (void *)-1) {
+      spdlog::critical("shmat failed: {}", std::strerror(errno));
+      exit(errno);
+    }
+
+    sem_id = semget(SEM_KEY_ID, is_owner ? SEM_TOTAL : 0, flags);
+    if (sem_id == -1) {
+      spdlog::critical("semget failed: {}", std::strerror(errno));
+      exit(errno);
+    }
+
+    msg_id = msgget(MSG_KEY_ID, flags);
+    if (msg_id == -1) {
+      spdlog::critical("msgget failed: {}", std::strerror(errno));
+      exit(errno);
+    }
+
+    if (is_owner) {
+      std::memset(shm, 0, sizeof(SharedState));
+
+      shm->running = true;
+      shm->total_packages_created = 0;
+      shm->trucks_completed = 0;
+
+      semctl(sem_id, SEM_MUTEX_BELT, SETVAL, 1);
+      semctl(sem_id, SEM_DOCK_MUTEX, SETVAL, 1);
+      semctl(sem_id, SEM_EMPTY_SLOTS, SETVAL, MAX_BELT_CAPACITY_K);
+      semctl(sem_id, SEM_FULL_SLOTS, SETVAL, 0);
+
+      spdlog::info("IPC Initialized: SHM ID {}, SEM ID {}, MSG ID {}", shm_id,
+                   sem_id, msg_id);
+    }
+
+    session_store = std::make_unique<SessionManager>(
+        shm, [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
+  }
 
   virtual ~Manager() {
     if (shmdt(shm) == -1) {
@@ -85,52 +133,5 @@ public:
       return static_cast<SignalType>(msg.command_id);
     }
     return SIGNAL_NONE;
-  }
-
-private:
-  void initResources() {
-    int flags = is_owner ? (IPC_CREAT | 0666) : 0666;
-
-    shm_id = shmget(SHM_KEY_ID, sizeof(SharedState), flags);
-    if (shm_id == -1) {
-      spdlog::critical("shmget failed: {}", std::strerror(errno));
-      exit(errno);
-    }
-
-    shm = (SharedState *)shmat(shm_id, nullptr, 0);
-    if (shm == (void *)-1) {
-      spdlog::critical("shmat failed: {}", std::strerror(errno));
-      exit(errno);
-    }
-
-    sem_id = semget(SEM_KEY_ID, is_owner ? SEM_TOTAL : 0, flags);
-    if (sem_id == -1) {
-      spdlog::critical("semget failed: {}", std::strerror(errno));
-      exit(errno);
-    }
-
-    msg_id = msgget(MSG_KEY_ID, flags);
-    if (msg_id == -1) {
-      spdlog::critical("msgget failed: {}", std::strerror(errno));
-      exit(errno);
-    }
-
-    if (is_owner) {
-      std::memset(shm, 0, sizeof(SharedState));
-
-      shm->running = true;
-      shm->total_packages_created = 0;
-      shm->trucks_completed = 0;
-
-      semctl(sem_id, SEM_MUTEX_BELT, SETVAL, 1);
-      semctl(sem_id, SEM_DOCK_MUTEX, SETVAL, 1);
-
-      semctl(sem_id, SEM_EMPTY_SLOTS, SETVAL, MAX_BELT_CAPACITY_K);
-
-      semctl(sem_id, SEM_FULL_SLOTS, SETVAL, 0);
-
-      spdlog::info("IPC Initialized: SHM ID {}, SEM ID {}, MSG ID {}", shm_id,
-                   sem_id, msg_id);
-    }
   }
 };

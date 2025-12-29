@@ -45,7 +45,6 @@ FetchContent_Declare(
 # Uncomment this if you are willing to build this using windows! set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
@@ -55,7 +54,6 @@ add_executable(dispatcher src/main_dispatcher.cpp)
 add_executable(belt src/main_belt.cpp)
 add_executable(express src/main_express.cpp)
 add_executable(truck src/main_truck.cpp)
-
 
 message(STATUS "Setting up tests")
 include(GoogleTest)

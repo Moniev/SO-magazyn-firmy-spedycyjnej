@@ -45,9 +45,6 @@ FetchContent_Declare(
 # Uncomment this if you are willing to build this using windows! set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-include(GoogleTest)
-enable_testing()
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
@@ -58,9 +55,13 @@ add_executable(belt src/main_belt.cpp)
 add_executable(express src/main_express.cpp)
 add_executable(truck src/main_truck.cpp)
 
-add_executable(unit_tests test/test.cpp)
-target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog)
+message(STATUS "Setting up tests")
+include(GoogleTest)
+enable_testing()
+file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
 
+add_executable(unit_tests ${TEST_SOURCES})
+target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog)
 gtest_discover_tests(unit_tests)
 
 message(STATUS "Build configurated")

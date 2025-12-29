@@ -1,6 +1,7 @@
 BUILD_DIR = build
 LOG_DIR = logs
 EXECUTABLE = main
+SOURCES := $(shell find src include tests -name '*.cpp' -o -name '*.h')
 
 export CC=clang
 export CXX=clang++
@@ -36,6 +37,16 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@rm -rf $(LOG_DIR)/*
 	@echo -e "$(GREEN)[success] Clean complete.$(RESET)"
+
+format:
+	@echo -e "$(CYAN)[info] Formatting code$(RESET)"
+	@clang-format -i $(SOURCES)
+	@echo -e "$(GREEN)[success] Code formatted.$(RESET)"
+
+lint:
+	@echo -e "$(CYAN)[info] Checking code formatting$(RESET)"
+	@clang-format --dry-run --Werror $(SOURCES)
+	@echo -e "$(GREEN)[success] Code style is correct.$(RESET)"
 
 rebuild: clean build
 

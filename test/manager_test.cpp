@@ -2,6 +2,7 @@
 #include <chrono>
 #include <gtest/gtest.h>
 #include <thread>
+#include <vector>
 
 class ManagerTest : public ::testing::Test {
 protected:
@@ -20,7 +21,7 @@ protected:
 
 TEST_F(ManagerTest, InitializationAsOwner) {
   ASSERT_NO_THROW({
-    Manager manager(true); // Owner
+    Manager manager(true);
 
     SharedState *state = manager.getState();
     ASSERT_NE(state, nullptr);
@@ -53,8 +54,8 @@ TEST_F(ManagerTest, MessageQueueCommunication) {
 
   owner.sendSignal(SIGNAL_DEPARTURE);
 
-  SignalType received = client.receiveSignalNonBlocking();
-  EXPECT_EQ(received, SIGNAL_DEPARTURE);
+  SignalType received_signal = client.receiveSignalNonBlocking();
+  EXPECT_EQ(received_signal, SIGNAL_DEPARTURE);
 
   EXPECT_EQ(client.receiveSignalNonBlocking(), SIGNAL_NONE);
 }
@@ -73,7 +74,7 @@ TEST_F(ManagerTest, SemaphoreSanity) {
 TEST_F(ManagerTest, SemaphoreBlockingLogic) {
   Manager owner(true);
 
-  bool criticalSectionVisited = false;
+  bool critical_section_visited = false;
 
   owner.lockBelt();
 
@@ -81,16 +82,72 @@ TEST_F(ManagerTest, SemaphoreBlockingLogic) {
     Manager client(false);
     client.lockBelt();
 
-    criticalSectionVisited = true;
+    critical_section_visited = true;
 
     client.unlockBelt();
   });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  EXPECT_FALSE(criticalSectionVisited);
+  EXPECT_FALSE(critical_section_visited);
 
   owner.unlockBelt();
 
   worker.join();
-  EXPECT_TRUE(criticalSectionVisited);
+  EXPECT_TRUE(critical_section_visited);
+}
+
+TEST_F(ManagerTest, SessionManager_BasicLifecycle) {
+  Manager mgr(true);
+
+  ASSERT_TRUE(mgr.session_store->login("TestUser", 2));
+  EXPECT_TRUE(mgr.session_store->trySpawnProcess());
+  EXPECT_TRUE(mgr.session_store->trySpawnProcess());
+  EXPECT_FALSE(mgr.session_store->trySpawnProcess());
+
+  mgr.session_store->reportProcessFinished();
+  EXPECT_TRUE(mgr.session_store->trySpawnProcess());
+
+  mgr.session_store->logout();
+  EXPECT_FALSE(mgr.session_store->trySpawnProcess());
+}
+
+TEST_F(ManagerTest, SessionManager_MultiUserIsolation) {
+  Manager admin(true);
+  Manager guest(false);
+
+  ASSERT_TRUE(admin.session_store->login("Admin", 10));
+  ASSERT_TRUE(guest.session_store->login("Guest", 1));
+
+  EXPECT_TRUE(admin.session_store->trySpawnProcess());
+  EXPECT_TRUE(guest.session_store->trySpawnProcess());
+
+  EXPECT_FALSE(guest.session_store->trySpawnProcess());
+  EXPECT_TRUE(admin.session_store->trySpawnProcess());
+}
+
+TEST_F(ManagerTest, SessionManager_PreventDuplicateLogin) {
+  Manager mgr_1(true);
+  Manager mgr_2(false);
+
+  ASSERT_TRUE(mgr_1.session_store->login("Operator", 5));
+
+  EXPECT_FALSE(mgr_2.session_store->login("Operator", 5));
+  EXPECT_TRUE(mgr_2.session_store->login("OtherUser", 5));
+}
+
+TEST_F(ManagerTest, SessionManager_MaxSessionsLimit) {
+  Manager mgr(true);
+
+  std::vector<std::unique_ptr<Manager>> clients;
+
+  for (int i = 0; i < MAX_USERS_SESSIONS; ++i) {
+    auto client_mgr = std::make_unique<Manager>(false);
+    std::string name = "User" + std::to_string(i);
+
+    ASSERT_TRUE(client_mgr->session_store->login(name, 1));
+    clients.push_back(std::move(client_mgr));
+  }
+
+  Manager overflow_client(false);
+  EXPECT_FALSE(overflow_client.session_store->login("UserOverflow", 1));
 }

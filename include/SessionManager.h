@@ -10,7 +10,7 @@
 class SessionManager {
 private:
   SharedState *shm;
-  int current_session = 1;
+  int current_session = -1;
 
   std::function<void()> lock_fn;
   std::function<void()> unlock_fn;

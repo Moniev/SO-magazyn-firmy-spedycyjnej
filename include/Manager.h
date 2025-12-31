@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Belt.h"
 #include "SessionManager.h"
 #include "Shared.h"
 #include "spdlog/spdlog.h"
@@ -22,6 +23,7 @@ protected:
 
 public:
   std::unique_ptr<SessionManager> session_store;
+  std::unique_ptr<Belt> belt;
 
   Manager(bool owner = false) : is_owner(owner) {
     int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
@@ -68,6 +70,13 @@ public:
 
     session_store = std::make_unique<SessionManager>(
         shm, [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
+
+    belt = std::make_unique<Belt>(
+        shm, [this]() { this->waitForEmptySlot(); },
+        [this]() { this->signalSlotFreed(); },
+        [this]() { this->waitForPackage(); },
+        [this]() { this->signalPackageAdded(); },
+        [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
   }
 
   virtual ~Manager() {

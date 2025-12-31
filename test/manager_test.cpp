@@ -151,3 +151,78 @@ TEST_F(ManagerTest, SessionManager_MaxSessionsLimit) {
   Manager overflow_client(false);
   EXPECT_FALSE(overflow_client.session_store->login("UserOverflow", 1));
 }
+
+TEST_F(ManagerTest, Belt_Integration_BasicPushPop) {
+  Manager mgr(true);
+
+  Package pkg_in;
+  pkg_in.weight = 50.0;
+
+  mgr.belt->push(pkg_in);
+
+  SharedState *state = mgr.getState();
+  EXPECT_EQ(state->current_items_count, 1);
+  EXPECT_EQ(state->total_packages_created, 1);
+  EXPECT_DOUBLE_EQ(state->current_belt_weight, 50.0);
+
+  Package pkg_out = mgr.belt->pop();
+
+  EXPECT_EQ(pkg_out.id, 1);
+  EXPECT_DOUBLE_EQ(pkg_out.weight, 50.0);
+  EXPECT_EQ(state->current_items_count, 0);
+}
+
+/*
+ * Thread is being used because of necessity.
+ * Kernel is not interested if semaphore blocks thread or process
+ * so let it slide for thread in tests as this is just easier to run
+ */
+TEST_F(ManagerTest, Belt_Integration_BlockingConsumer) {
+  Manager producer(true);
+
+  std::atomic<bool> pop_finished{false};
+
+  std::thread consumer_thread([&]() {
+    Manager consumer(false);
+    consumer.belt->pop();
+    pop_finished = true;
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  EXPECT_FALSE(pop_finished);
+
+  Package p;
+  producer.belt->push(p);
+
+  consumer_thread.join();
+  EXPECT_TRUE(pop_finished);
+}
+
+TEST_F(ManagerTest, Belt_Integration_BlockingProducer) {
+  Manager producer(true);
+
+  for (int i = 0; i < MAX_BELT_CAPACITY_K; ++i) {
+    Package p;
+    producer.belt->push(p);
+  }
+
+  EXPECT_EQ(producer.getState()->current_items_count, MAX_BELT_CAPACITY_K);
+
+  std::atomic<bool> push_finished{false};
+
+  std::thread producer_thread([&]() {
+    Manager threaded_producer(false);
+    Package overflow_pkg;
+    threaded_producer.belt->push(overflow_pkg);
+    push_finished = true;
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  EXPECT_FALSE(push_finished);
+
+  Manager consumer(false);
+  consumer.belt->pop();
+
+  producer_thread.join();
+  EXPECT_TRUE(push_finished);
+}

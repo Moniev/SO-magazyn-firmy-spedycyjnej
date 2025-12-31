@@ -10,17 +10,18 @@
 class SessionManager {
 private:
   SharedState *shm;
+
   int current_session = -1;
 
   std::function<void()> lock_fn;
   std::function<void()> unlock_fn;
 
 public:
-  SessionManager(SharedState *sharedState, std::function<void()> lock,
+  SessionManager(SharedState *shared_state, std::function<void()> lock,
                  std::function<void()> unlock)
-      : shm(sharedState), lock_fn(lock), unlock_fn(unlock) {}
+      : shm(shared_state), lock_fn(lock), unlock_fn(unlock) {}
 
-  bool login(const std::string &name, int maxProcs) {
+  bool login(const std::string &name, int max_procs) {
     if (!shm)
       return false;
 
@@ -29,37 +30,39 @@ public:
     for (int i = 0; i < MAX_USERS_SESSIONS; ++i) {
       if (shm->users[i].active &&
           std::strncmp(shm->users[i].username, name.c_str(), 31) == 0) {
-        spdlog::warn("User '{}' is already logged in!", name);
+        spdlog::warn("[session manager] User '{}' is already logged in!", name);
         unlock_fn();
         return false;
       }
     }
 
-    int freeSlot = -1;
+    int free_slot = -1;
     for (int i = 0; i < MAX_USERS_SESSIONS; ++i) {
       if (!shm->users[i].active) {
-        freeSlot = i;
+        free_slot = i;
         break;
       }
     }
 
-    if (freeSlot == -1) {
-      spdlog::error("Session limit reached! Cannot log in '{}'.", name);
+    if (free_slot == -1) {
+      spdlog::error(
+          "[session manager] Session limit reached! Cannot log in '{}'.", name);
       unlock_fn();
       return false;
     }
 
-    std::memset(&shm->users[freeSlot], 0, sizeof(UserSession));
-    shm->users[freeSlot].active = true;
-    std::strncpy(shm->users[freeSlot].username, name.c_str(), 31);
-    shm->users[freeSlot].max_processes = maxProcs;
-    shm->users[freeSlot].current_processes = 0;
-    shm->users[freeSlot].session_pid = getpid();
+    std::memset(&shm->users[free_slot], 0, sizeof(UserSession));
+    shm->users[free_slot].active = true;
+    std::strncpy(shm->users[free_slot].username, name.c_str(), 31);
+    shm->users[free_slot].max_processes = max_procs;
+    shm->users[free_slot].current_processes = 0;
+    shm->users[free_slot].session_pid = getpid();
 
-    current_session = freeSlot;
+    current_session = free_slot;
 
-    spdlog::info("User '{}' logged in (Session ID: {}). Limit: {}", name,
-                 freeSlot, maxProcs);
+    spdlog::info(
+        "[session manager] User '{}' logged in (Session ID: {}). Limit: {}",
+        name, free_slot, max_procs);
 
     unlock_fn();
     return true;
@@ -71,7 +74,7 @@ public:
 
     lock_fn();
 
-    spdlog::info("User '{}' logging out.",
+    spdlog::info("[session manager] User '{}' logging out.",
                  shm->users[current_session].username);
     shm->users[current_session].active = false;
     shm->users[current_session].current_processes = 0;
@@ -82,7 +85,7 @@ public:
 
   bool trySpawnProcess() {
     if (current_session == -1 || !shm) {
-      spdlog::error("No active session for this process!");
+      spdlog::error("[session manager] No active session for this process!");
       return false;
     }
 
@@ -94,8 +97,9 @@ public:
       user.current_processes++;
       success = true;
     } else {
-      spdlog::warn("Process limit reached for user '{}' ({}/{})", user.username,
-                   user.current_processes, user.max_processes);
+      spdlog::warn(
+          "[session manager] Process limit reached for user '{}' ({}/{})",
+          user.username, user.current_processes, user.max_processes);
     }
 
     unlock_fn();

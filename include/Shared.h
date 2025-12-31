@@ -116,6 +116,8 @@ struct ActionRecord {
 };
 
 struct Package {
+  int id;
+
   pid_t creator_pid;
   pid_t editor_pid;
 

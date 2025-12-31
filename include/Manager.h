@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Belt.h"
 #include "SessionManager.h"
 #include "Shared.h"
 #include "spdlog/spdlog.h"
@@ -22,31 +23,32 @@ protected:
 
 public:
   std::unique_ptr<SessionManager> session_store;
+  std::unique_ptr<Belt> belt;
 
   Manager(bool owner = false) : is_owner(owner) {
     int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
 
     shm_id = shmget(SHM_KEY_ID, sizeof(SharedState), flags);
     if (shm_id == -1) {
-      spdlog::critical("shmget failed: {}", std::strerror(errno));
+      spdlog::critical("[ipc manager] shmget failed: {}", std::strerror(errno));
       exit(errno);
     }
 
     shm = (SharedState *)shmat(shm_id, nullptr, 0);
     if (shm == (void *)-1) {
-      spdlog::critical("shmat failed: {}", std::strerror(errno));
+      spdlog::critical("[ipc manager] shmat failed: {}", std::strerror(errno));
       exit(errno);
     }
 
     sem_id = semget(SEM_KEY_ID, is_owner ? SEM_TOTAL : 0, flags);
     if (sem_id == -1) {
-      spdlog::critical("semget failed: {}", std::strerror(errno));
+      spdlog::critical("[ipc manager] semget failed: {}", std::strerror(errno));
       exit(errno);
     }
 
     msg_id = msgget(MSG_KEY_ID, flags);
     if (msg_id == -1) {
-      spdlog::critical("msgget failed: {}", std::strerror(errno));
+      spdlog::critical("[ipc manager] msgget failed: {}", std::strerror(errno));
       exit(errno);
     }
 
@@ -62,27 +64,38 @@ public:
       semctl(sem_id, SEM_EMPTY_SLOTS, SETVAL, MAX_BELT_CAPACITY_K);
       semctl(sem_id, SEM_FULL_SLOTS, SETVAL, 0);
 
-      spdlog::info("IPC Initialized: SHM ID {}, SEM ID {}, MSG ID {}", shm_id,
-                   sem_id, msg_id);
+      spdlog::info(
+          "[ipc manager] IPC Initialized: SHM ID {}, SEM ID {}, MSG ID {}",
+          shm_id, sem_id, msg_id);
     }
 
     session_store = std::make_unique<SessionManager>(
         shm, [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
+
+    belt = std::make_unique<Belt>(
+        shm, [this]() { this->waitForEmptySlot(); },
+        [this]() { this->signalSlotFreed(); },
+        [this]() { this->waitForPackage(); },
+        [this]() { this->signalPackageAdded(); },
+        [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
   }
 
   virtual ~Manager() {
     if (shmdt(shm) == -1) {
-      spdlog::warn("shmdt failed: {}", std::strerror(errno));
+      spdlog::warn("[ipc manager] shmdt failed: {}", std::strerror(errno));
     }
 
     if (is_owner) {
-      spdlog::info("Cleaning up IPC resources...");
+      spdlog::info("[ipc manager] Cleaning up IPC resources...");
       if (shmctl(shm_id, IPC_RMID, nullptr) == -1)
-        spdlog::warn("shmctl RMID failed: {}", std::strerror(errno));
+        spdlog::warn("[ipc manager] shmctl RMID failed: {}",
+                     std::strerror(errno));
       if (semctl(sem_id, 0, IPC_RMID) == -1)
-        spdlog::warn("semctl RMID failed: {}", std::strerror(errno));
+        spdlog::warn("[ipc manager] semctl RMID failed: {}",
+                     std::strerror(errno));
       if (msgctl(msg_id, IPC_RMID, nullptr) == -1)
-        spdlog::warn("msgctl RMID failed: {}", std::strerror(errno));
+        spdlog::warn("[ipc manager] msgctl RMID failed: {}",
+                     std::strerror(errno));
     }
   }
 
@@ -96,8 +109,8 @@ public:
 
     while (semop(sem_id, &sb, 1) == -1) {
       if (errno != EINTR) {
-        spdlog::critical("semop failed (idx: {}, op: {}): {}", (int)semIdx, op,
-                         std::strerror(errno));
+        spdlog::critical("[ipc manager] semop failed (idx: {}, op: {}): {}",
+                         (int)semIdx, op, std::strerror(errno));
         exit(errno);
       }
     }
@@ -121,9 +134,9 @@ public:
     msg.command_id = static_cast<int>(type);
 
     if (msgsnd(msg_id, &msg, sizeof(int), 0) == -1) {
-      spdlog::error("msgsnd failed: {}", std::strerror(errno));
+      spdlog::error("[ipc manager] msgsnd failed: {}", std::strerror(errno));
     } else {
-      spdlog::info("Signal {} sent.", (int)type);
+      spdlog::info("[ipc manager] Signal {} sent.", (int)type);
     }
   }
 

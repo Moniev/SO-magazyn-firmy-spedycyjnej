@@ -28,7 +28,7 @@ public:
         signal_empty_fn(signal_empty), wait_full_fn(wait_full),
         signal_full_fn(signal_full), lock_fn(lock), unlock_fn(unlock) {}
 
-  void push(const Package &pkg) {
+  void push(Package &pkg) {
     if (!shm)
       return;
 

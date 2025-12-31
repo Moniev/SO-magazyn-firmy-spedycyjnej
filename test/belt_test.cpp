@@ -17,7 +17,6 @@ TEST_F(BeltTest, PushUpdatesStateAndTail) {
   Belt belt(&mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op);
 
   Package pkg_in;
-  pkg_in.id = 101;
   pkg_in.weight = 10.5;
 
   belt.push(pkg_in);
@@ -29,7 +28,7 @@ TEST_F(BeltTest, PushUpdatesStateAndTail) {
   EXPECT_EQ(mock_shared_memory.tail, 1);
   EXPECT_EQ(mock_shared_memory.head, 0);
 
-  EXPECT_EQ(mock_shared_memory.belt[0].id, 101);
+  EXPECT_EQ(mock_shared_memory.belt[0].id, 1);
 }
 
 TEST_F(BeltTest, PopReturnsCorrectDataAndUpdatesHead) {
@@ -63,11 +62,10 @@ TEST_F(BeltTest, CircularLogicWrapAround) {
   mock_shared_memory.tail = capacity - 1;
 
   Package pkg;
-  pkg.id = 999;
 
   belt.push(pkg);
 
-  EXPECT_EQ(mock_shared_memory.belt[capacity - 1].id, 999);
+  EXPECT_EQ(mock_shared_memory.belt[capacity - 1].id, 1);
   EXPECT_EQ(mock_shared_memory.tail, 0);
 }
 

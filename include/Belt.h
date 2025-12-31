@@ -35,6 +35,9 @@ public:
     wait_empty_fn();
     lock_fn();
 
+    shm->total_packages_created++;
+    pkg.id = shm->total_packages_created;
+
     int current_tail = shm->tail;
     shm->belt[current_tail] = pkg;
 
@@ -42,19 +45,18 @@ public:
 
     shm->current_items_count++;
     shm->current_belt_weight += pkg.weight;
-    shm->total_packages_created++;
 
     spdlog::info("[belt] Pushed ID {} at {}. Load: {}/{}", pkg.id, current_tail,
                  shm->current_items_count, MAX_BELT_CAPACITY_K);
 
     unlock_fn();
-
     signal_full_fn();
   }
 
   Package pop() {
-    if (!shm)
+    if (!shm) {
       return {};
+    }
 
     wait_full_fn();
 

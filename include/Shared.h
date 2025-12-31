@@ -19,6 +19,7 @@ constexpr int SEM_KEY_ID = 5678;
 constexpr int MSG_KEY_ID = 9012;
 
 constexpr int MAX_PACKAGE_HISTORY = 6;
+constexpr int MAX_USERS_SESSIONS = 3;
 
 enum SemIndex {
   SEM_MUTEX_BELT = 0,
@@ -141,6 +142,15 @@ struct Package {
   }
 };
 
+struct UserSession {
+  bool active;
+  char username[32];
+  pid_t session_pid;
+
+  int max_processes;
+  int current_processes;
+};
+
 struct SharedState {
   Package belt[MAX_BELT_CAPACITY_K];
   int head;
@@ -155,6 +165,7 @@ struct SharedState {
 
   bool force_truck_departure;
   bool p4_load_command;
+  UserSession users[MAX_USERS_SESSIONS];
 };
 
 struct CommandMessage {

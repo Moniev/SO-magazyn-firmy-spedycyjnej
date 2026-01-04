@@ -26,7 +26,7 @@ build:
 
 run: build
 	@echo -e "$(GREEN)[info] Starting automated simulation$(RESET)"
-	@chmod +x run_simulation.sh
+	@chmod +x run.sh
 	@./run.sh
 
 ipc:

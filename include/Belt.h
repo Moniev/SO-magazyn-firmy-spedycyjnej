@@ -4,7 +4,6 @@
 #include "spdlog/spdlog.h"
 #include <cstring>
 #include <functional>
-#include <optional>
 
 class Belt {
 private:

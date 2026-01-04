@@ -1,4 +1,5 @@
 #include "../include/Manager.h"
+#include "../include/Shared.h"
 #include <chrono>
 #include <gtest/gtest.h>
 #include <thread>
@@ -10,6 +11,8 @@ protected:
     shmctl(shmget(SHM_KEY_ID, 0, 0666), IPC_RMID, nullptr);
     semctl(semget(SEM_KEY_ID, 0, 0666), 0, IPC_RMID);
     msgctl(msgget(MSG_KEY_ID, 0666), IPC_RMID, nullptr);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
   void TearDown() override {
@@ -99,7 +102,7 @@ TEST_F(ManagerTest, SemaphoreBlockingLogic) {
 TEST_F(ManagerTest, SessionManager_BasicLifecycle) {
   Manager mgr(true);
 
-  ASSERT_TRUE(mgr.session_store->login("TestUser", 2));
+  ASSERT_TRUE(mgr.session_store->login("TestUser", UserRole::Operator, 100, 2));
   EXPECT_TRUE(mgr.session_store->trySpawnProcess());
   EXPECT_TRUE(mgr.session_store->trySpawnProcess());
   EXPECT_FALSE(mgr.session_store->trySpawnProcess());
@@ -115,8 +118,8 @@ TEST_F(ManagerTest, SessionManager_MultiUserIsolation) {
   Manager admin(true);
   Manager guest(false);
 
-  ASSERT_TRUE(admin.session_store->login("Admin", 10));
-  ASSERT_TRUE(guest.session_store->login("Guest", 1));
+  ASSERT_TRUE(admin.session_store->login("Admin", UserRole::SysAdmin, 0, 10));
+  ASSERT_TRUE(guest.session_store->login("Guest", UserRole::Viewer, 0, 1));
 
   EXPECT_TRUE(admin.session_store->trySpawnProcess());
   EXPECT_TRUE(guest.session_store->trySpawnProcess());
@@ -129,10 +132,14 @@ TEST_F(ManagerTest, SessionManager_PreventDuplicateLogin) {
   Manager mgr_1(true);
   Manager mgr_2(false);
 
-  ASSERT_TRUE(mgr_1.session_store->login("Operator", 5));
+  ASSERT_TRUE(
+      mgr_1.session_store->login("Operator", UserRole::Operator, 100, 5));
 
-  EXPECT_FALSE(mgr_2.session_store->login("Operator", 5));
-  EXPECT_TRUE(mgr_2.session_store->login("OtherUser", 5));
+  EXPECT_FALSE(
+      mgr_2.session_store->login("Operator", UserRole::Operator, 100, 5));
+
+  EXPECT_TRUE(
+      mgr_2.session_store->login("OtherUser", UserRole::Viewer, 200, 5));
 }
 
 TEST_F(ManagerTest, SessionManager_MaxSessionsLimit) {
@@ -144,12 +151,13 @@ TEST_F(ManagerTest, SessionManager_MaxSessionsLimit) {
     auto client_mgr = std::make_unique<Manager>(false);
     std::string name = "User" + std::to_string(i);
 
-    ASSERT_TRUE(client_mgr->session_store->login(name, 1));
+    ASSERT_TRUE(client_mgr->session_store->login(name, UserRole::Viewer, i, 1));
     clients.push_back(std::move(client_mgr));
   }
 
   Manager overflow_client(false);
-  EXPECT_FALSE(overflow_client.session_store->login("UserOverflow", 1));
+  EXPECT_FALSE(overflow_client.session_store->login("UserOverflow",
+                                                    UserRole::Viewer, 99, 1));
 }
 
 TEST_F(ManagerTest, Belt_Integration_BasicPushPop) {
@@ -172,11 +180,6 @@ TEST_F(ManagerTest, Belt_Integration_BasicPushPop) {
   EXPECT_EQ(state->current_items_count, 0);
 }
 
-/*
- * Thread is being used because of necessity.
- * Kernel is not interested if semaphore blocks thread or process
- * so let it slide for thread in tests as this is just easier to run
- */
 TEST_F(ManagerTest, Belt_Integration_BlockingConsumer) {
   Manager producer(true);
 
@@ -225,4 +228,89 @@ TEST_F(ManagerTest, Belt_Integration_BlockingProducer) {
 
   producer_thread.join();
   EXPECT_TRUE(push_finished);
+}
+
+TEST_F(ManagerTest, TruckComponentInitialization) {
+  Manager mgr(true);
+  EXPECT_NE(mgr.truck, nullptr);
+}
+
+TEST_F(ManagerTest, BlockingSignalReception) {
+  Manager receiver(true);
+
+  std::thread sender([&]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Manager sender_mgr(false);
+    sender_mgr.sendSignal(SIGNAL_DEPARTURE);
+  });
+
+  SignalType received = receiver.receiveSignalBlocking();
+  EXPECT_EQ(received, SIGNAL_DEPARTURE);
+
+  sender.join();
+}
+
+TEST_F(ManagerTest, BlockingSignal_EndWork) {
+  Manager receiver(true);
+
+  std::thread sender([&]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Manager sender_mgr(false);
+    sender_mgr.sendSignal(SIGNAL_END_WORK);
+  });
+
+  SignalType received = receiver.receiveSignalBlocking();
+  EXPECT_EQ(received, SIGNAL_END_WORK);
+
+  sender.join();
+}
+
+TEST_F(ManagerTest, Dispatcher_SuccessfulLoad) {
+  Manager m(true);
+
+  ASSERT_NE(m.getState(), nullptr);
+  ASSERT_NE(m.dispatcher.get(), nullptr);
+  ASSERT_NE(m.belt.get(), nullptr);
+
+  m.lockDock();
+  std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
+  m.getState()->dock_truck.is_present = true;
+  m.getState()->dock_truck.id = 101;
+  m.getState()->dock_truck.max_load = 5;
+  m.getState()->dock_truck.current_load = 0;
+  m.getState()->dock_truck.current_weight = 0.0;
+  m.unlockDock();
+
+  Package p;
+  p.id = 100;
+  p.weight = 20.0;
+  m.belt->push(p);
+
+  m.dispatcher->processNextPackage();
+
+  m.lockDock();
+  EXPECT_EQ(m.getState()->dock_truck.current_load, 1);
+  EXPECT_DOUBLE_EQ(m.getState()->dock_truck.current_weight, 20.0);
+  m.unlockDock();
+}
+
+TEST_F(ManagerTest, Dispatcher_FullTruckTriggersDeparture) {
+  Manager m(true);
+  ASSERT_NE(m.getState(), nullptr);
+
+  m.lockDock();
+  std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
+  m.getState()->dock_truck.is_present = true;
+  m.getState()->dock_truck.max_load = 1;
+  m.getState()->dock_truck.current_load = 0;
+  m.unlockDock();
+
+  Package p;
+  p.id = 1;
+  m.belt->push(p);
+
+  m.dispatcher->processNextPackage();
+
+  SignalType sig = m.receiveSignalNonBlocking();
+  EXPECT_EQ(sig, SIGNAL_DEPARTURE);
 }

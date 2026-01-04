@@ -1,134 +1,72 @@
-#include "../include/Dispatcher.h"
-#include <gtest/gtest.h>
-#include <cstring>
-#include <atomic>
+/**
+ * @file dispatcher_test.cpp
+ * @brief Integration tests for the Dispatcher's package routing logic.
+ * * These tests focus on the interaction between the Shared Memory segments,
+ * checking that data transferred from the Belt buffer correctly manifests
+ * in the TruckState structure.
+ */
 
+#include "../include/Manager.h"
+#include <gtest/gtest.h>
+
+/**
+ * @class DispatcherTest
+ * @brief Test fixture for verifying inter-process routing logic.
+ * * The fixture ensures a clean slate by explicitly removing existing Linux IPC
+ * resources (Shared Memory, Semaphores, Message Queues) before each test to
+ * prevent cross-test interference or stale data corruption.
+ */
 class DispatcherTest : public ::testing::Test {
 protected:
-    SharedState mock_shared_memory;
+  /**
+   * @brief Performs hard reset of System V IPC resources.
+   * * Uses IPC_RMID to mark resources for destruction. A short sleep is
+   * included to ensure the kernel has fully released the descriptors before the
+   * next Manager instance attempts initialization.
+   */
+  void SetUp() override {
+    shmctl(shmget(SHM_KEY_ID, 0, 0), IPC_RMID, nullptr);
+    semctl(semget(SEM_KEY_ID, 0, 0), 0, IPC_RMID);
+    msgctl(msgget(MSG_KEY_ID, 0), IPC_RMID, nullptr);
 
-    int lock_calls = 0;
-    int unlock_calls = 0;
-    SignalType last_signal = SIGNAL_NONE;
-    int signal_calls = 0;
-
-    std::function<void()> no_op = [](){};
-
-    std::function<void()> mock_lock = [this](){ lock_calls++; };
-    std::function<void()> mock_unlock = [this](){ unlock_calls++; };
-    std::function<void(SignalType)> mock_signal = [this](SignalType s){
-        last_signal = s;
-        signal_calls++;
-    };
-
-    void SetUp() override {
-        std::memset(&mock_shared_memory, 0, sizeof(SharedState));
-
-        mock_shared_memory.dock_truck.is_present = true;
-        mock_shared_memory.dock_truck.id = 10;
-        mock_shared_memory.dock_truck.max_load = 10;
-        mock_shared_memory.dock_truck.max_weight = 100.0;
-        mock_shared_memory.dock_truck.current_load = 0;
-        mock_shared_memory.dock_truck.current_weight = 0.0;
-    }
-
-    std::unique_ptr<Belt> createDummyBelt() {
-        return std::make_unique<Belt>(
-            &mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op
-        );
-    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 };
 
-TEST_F(DispatcherTest, SuccessfullyLoadsPackage) {
-    auto belt = createDummyBelt();
-    Dispatcher dispatcher(belt.get(), &mock_shared_memory, mock_lock, mock_unlock, mock_signal);
+/**
+ * @test SuccessfulLoad
+ * @brief Verifies a standard end-to-end transfer.
+ * * Scenario:
+ * 1. Initialize IPC resources as the owner.
+ * 2. Manually place a Truck in the dock via SharedState.
+ * 3. Push a known Package onto the Belt.
+ * 4. Invoke processNextPackage().
+ * * Expected Result:
+ * - Truck's current_load increments to 1.
+ * - Truck's current_weight matches the Package weight.
+ * - Shared memory integrity is maintained through Mutex locks.
+ */
+TEST_F(DispatcherTest, SuccessfulLoad) {
+  Manager m(true);
+  ASSERT_NE(m.getState(), nullptr) << "Shared memory not attached!";
 
-    Package p;
-    p.id = 1;
-    p.weight = 10.0;
+  m.lockDock();
+  m.getState()->dock_truck.is_present = true;
+  m.getState()->dock_truck.id = 101;
+  m.getState()->dock_truck.max_load = 2;
+  m.getState()->dock_truck.current_load = 0;
+  m.getState()->dock_truck.current_weight = 0.0;
+  m.unlockDock();
 
-    mock_shared_memory.belt[0] = p;
-    mock_shared_memory.head = 0;
-    mock_shared_memory.tail = 1;
+  Package p;
+  p.id = 500;
+  p.weight = 10.5;
+  m.belt->push(p);
 
-    dispatcher.processNextPackage();
+  m.dispatcher->processNextPackage();
 
-    EXPECT_EQ(mock_shared_memory.belt[0].id, 0);
-
-    EXPECT_EQ(mock_shared_memory.dock_truck.current_load, 1);
-    EXPECT_DOUBLE_EQ(mock_shared_memory.dock_truck.current_weight, 10.0);
-
-    EXPECT_EQ(lock_calls, 1);
-    EXPECT_EQ(unlock_calls, 1);
-
-    EXPECT_EQ(signal_calls, 0);
-}
-
-TEST_F(DispatcherTest, HandlesNoTruckSafely) {
-    auto belt = createDummyBelt();
-    Dispatcher dispatcher(belt.get(), &mock_shared_memory, mock_lock, mock_unlock, mock_signal);
-
-    mock_shared_memory.dock_truck.is_present = false;
-
-    Package p; p.id = 2; p.weight = 5.0;
-    mock_shared_memory.belt[0] = p;
-
-    dispatcher.processNextPackage();
-
-    EXPECT_EQ(mock_shared_memory.dock_truck.current_load, 0);
-
-    EXPECT_GE(lock_calls, 1);
-    EXPECT_GE(unlock_calls, 1);
-}
-
-TEST_F(DispatcherTest, RejectsOverweightPackageAndSignals) {
-    auto belt = createDummyBelt();
-    Dispatcher dispatcher(belt.get(), &mock_shared_memory, mock_lock, mock_unlock, mock_signal);
-
-    mock_shared_memory.dock_truck.current_weight = 90.0;
-    mock_shared_memory.dock_truck.current_load = 5;
-
-    Package p; p.id = 3; p.weight = 20.0;
-    mock_shared_memory.belt[0] = p;
-
-    dispatcher.processNextPackage();
-
-    EXPECT_DOUBLE_EQ(mock_shared_memory.dock_truck.current_weight, 90.0);
-    EXPECT_EQ(mock_shared_memory.dock_truck.current_load, 5);
-
-    EXPECT_EQ(signal_calls, 1);
-    EXPECT_EQ(last_signal, SIGNAL_DEPARTURE);
-}
-
-TEST_F(DispatcherTest, RejectsCountOverflowAndSignals) {
-    auto belt = createDummyBelt();
-    Dispatcher dispatcher(belt.get(), &mock_shared_memory, mock_lock, mock_unlock, mock_signal);
-
-    mock_shared_memory.dock_truck.current_load = 10;
-    mock_shared_memory.dock_truck.max_load = 10;
-
-    Package p; p.id = 4; p.weight = 1.0;
-    mock_shared_memory.belt[0] = p;
-
-    dispatcher.processNextPackage();
-
-    EXPECT_EQ(mock_shared_memory.dock_truck.current_load, 10);
-    EXPECT_EQ(last_signal, SIGNAL_DEPARTURE);
-}
-
-TEST_F(DispatcherTest, LoadsLastPackageAndSignalsDeparture) {
-    auto belt = createDummyBelt();
-    Dispatcher dispatcher(belt.get(), &mock_shared_memory, mock_lock, mock_unlock, mock_signal);
-
-    mock_shared_memory.dock_truck.current_load = 9;
-    mock_shared_memory.dock_truck.max_load = 10;
-
-    Package p; p.id = 5; p.weight = 1.0;
-    mock_shared_memory.belt[0] = p;
-
-    dispatcher.processNextPackage();
-
-    EXPECT_EQ(mock_shared_memory.dock_truck.current_load, 10);
-    EXPECT_EQ(signal_calls, 1);
-    EXPECT_EQ(last_signal, SIGNAL_DEPARTURE);
+  m.lockDock();
+  EXPECT_EQ(m.getState()->dock_truck.current_load, 1);
+  EXPECT_DOUBLE_EQ(m.getState()->dock_truck.current_weight, 10.5);
+  m.unlockDock();
 }

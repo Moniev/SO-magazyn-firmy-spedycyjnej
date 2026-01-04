@@ -25,8 +25,13 @@ build:
 	@echo -e "$(GREEN)[success] Build complete.$(RESET)"
 
 run: build
-	@echo -e "$(GREEN)[info] Starting simulation$(RESET)"
-	@./$(BUILD_DIR)/$(EXECUTABLE)
+	@echo -e "$(GREEN)[info] Starting automated simulation$(RESET)"
+	@chmod +x run.sh
+	@./run.sh
+
+ipc:
+	@echo -e "$(CYAN)[info] Current IPC Resources:$(RESET)"
+	@ipcs -m -s -q | grep $(shell whoami)
 
 test: build
 	@echo -e "$(GREEN)[info] Running tests$(RESET)"

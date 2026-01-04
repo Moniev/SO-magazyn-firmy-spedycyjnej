@@ -8,7 +8,6 @@ else()
   message(WARNING "Using default compiler, due to missing Clang")
 endif()
 
-
 message(STATUS "Setting variables")
 project(Warehouse CXX)
 
@@ -26,6 +25,13 @@ add_compile_options(
 )
 
 include(FetchContent)
+
+message(STATUS "Downloading nlohmann/json")
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
 
 message(STATUS "Downloading spdlog")
 FetchContent_Declare(
@@ -49,11 +55,20 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
 message(STATUS "Adding executables")
-add_executable(main src/main.cpp)
-add_executable(dispatcher src/main_dispatcher.cpp)
-add_executable(belt src/main_belt.cpp)
-add_executable(express src/main_express.cpp)
-add_executable(truck src/main_truck.cpp)
+set(BINS main dispatcher belt express truck)
+foreach(BIN ${BINS})
+  if(${BIN} STREQUAL "main")
+    add_executable(${BIN} src/main.cpp)
+  else()
+    add_executable(${BIN} src/main_${BIN}.cpp)
+  endif()
+
+  target_link_libraries(${BIN} PRIVATE
+        spdlog::spdlog
+        nlohmann_json::nlohmann_json
+        pthread
+    )
+endforeach()
 
 message(STATUS "Setting up tests")
 include(GoogleTest)
@@ -61,7 +76,7 @@ enable_testing()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
 
 add_executable(unit_tests ${TEST_SOURCES})
-target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog)
+target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog nlohmann_json::nlohmann_json)
 gtest_discover_tests(unit_tests)
 
 message(STATUS "Build configurated")

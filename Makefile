@@ -61,3 +61,9 @@ help:
 	@echo "  make run     - Build and execute the simulation"
 	@echo "  make clean   - Remove build artifacts and logs"
 	@echo "  make rebuild - Clean and build from scratch"
+
+docs:
+	@echo -e "$(CYAN)[info] Generating documentation.$(RESET)"
+	@mkdir -p docs
+	@doxygen Doxyfile
+	@echo -e "$(GREEN)[success] Documentation generated in docs/html/index.html$(RESET)"

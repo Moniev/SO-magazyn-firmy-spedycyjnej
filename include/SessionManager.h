@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Shared.h"
 #include "spdlog/spdlog.h"
-#include <Shared.h>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -10,9 +10,7 @@
 class SessionManager {
 private:
   SharedState *shm;
-
   int current_session = -1;
-
   std::function<void()> lock_fn;
   std::function<void()> unlock_fn;
 
@@ -21,7 +19,8 @@ public:
                  std::function<void()> unlock)
       : shm(shared_state), lock_fn(lock), unlock_fn(unlock) {}
 
-  bool login(const std::string &name, int max_procs) {
+  bool login(const std::string &name, UserRole role, OrgId orgId,
+             int max_procs = 5) {
     if (!shm)
       return false;
 
@@ -30,7 +29,7 @@ public:
     for (int i = 0; i < MAX_USERS_SESSIONS; ++i) {
       if (shm->users[i].active &&
           std::strncmp(shm->users[i].username, name.c_str(), 31) == 0) {
-        spdlog::warn("[session manager] User '{}' is already logged in!", name);
+        spdlog::warn("[session] User '{}' is already logged in!", name);
         unlock_fn();
         return false;
       }
@@ -46,23 +45,27 @@ public:
 
     if (free_slot == -1) {
       spdlog::error(
-          "[session manager] Session limit reached! Cannot log in '{}'.", name);
+          "[session] Session limit reached (MAX 3)! Cannot log in '{}'.", name);
       unlock_fn();
       return false;
     }
 
     std::memset(&shm->users[free_slot], 0, sizeof(UserSession));
+
     shm->users[free_slot].active = true;
     std::strncpy(shm->users[free_slot].username, name.c_str(), 31);
+
+    shm->users[free_slot].role = role;
+    shm->users[free_slot].orgId = orgId;
+
     shm->users[free_slot].max_processes = max_procs;
     shm->users[free_slot].current_processes = 0;
     shm->users[free_slot].session_pid = getpid();
 
     current_session = free_slot;
 
-    spdlog::info(
-        "[session manager] User '{}' logged in (Session ID: {}). Limit: {}",
-        name, free_slot, max_procs);
+    spdlog::info("[session] Logged in: '{}' (Org: {}, RoleMask: {}) @ Slot {}",
+                 name, orgId, (int)role, free_slot);
 
     unlock_fn();
     return true;
@@ -73,10 +76,14 @@ public:
       return;
 
     lock_fn();
-
-    spdlog::info("[session manager] User '{}' logging out.",
+    spdlog::info("[session] Logging out: '{}'",
                  shm->users[current_session].username);
+
     shm->users[current_session].active = false;
+
+    shm->users[current_session].role = UserRole::None;
+    shm->users[current_session].orgId = 0;
+
     shm->users[current_session].current_processes = 0;
     current_session = -1;
 
@@ -84,24 +91,15 @@ public:
   }
 
   bool trySpawnProcess() {
-    if (current_session == -1 || !shm) {
-      spdlog::error("[session manager] No active session for this process!");
+    if (current_session == -1 || !shm)
       return false;
-    }
-
     bool success = false;
     lock_fn();
-
     UserSession &user = shm->users[current_session];
     if (user.current_processes < user.max_processes) {
       user.current_processes++;
       success = true;
-    } else {
-      spdlog::warn(
-          "[session manager] Process limit reached for user '{}' ({}/{})",
-          user.username, user.current_processes, user.max_processes);
     }
-
     unlock_fn();
     return success;
   }
@@ -109,7 +107,6 @@ public:
   void reportProcessFinished() {
     if (current_session == -1 || !shm)
       return;
-
     lock_fn();
     if (shm->users[current_session].current_processes > 0) {
       shm->users[current_session].current_processes--;
@@ -117,6 +114,11 @@ public:
     unlock_fn();
   }
 
+  UserRole getCurrentRole() {
+    if (current_session == -1 || !shm)
+      return UserRole::None;
+    return shm->users[current_session].role;
+  }
+
   int getSessionIndex() const { return current_session; }
-  void setSessionIndex(int idx) { current_session = idx; }
 };

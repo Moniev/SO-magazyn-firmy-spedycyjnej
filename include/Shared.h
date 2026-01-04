@@ -3,8 +3,8 @@
 
 #include <cstdint>
 #include <ctime>
+#include <iostream>
 #include <sys/types.h>
-#include <type_traits>
 #include <unistd.h>
 
 constexpr int MAX_BELT_CAPACITY_K = 10;
@@ -20,6 +20,8 @@ constexpr int MSG_KEY_ID = 9012;
 
 constexpr int MAX_PACKAGE_HISTORY = 6;
 constexpr int MAX_USERS_SESSIONS = 3;
+
+using OrgId = int;
 
 enum SemIndex {
   SEM_MUTEX_BELT = 0,
@@ -59,6 +61,41 @@ inline constexpr bool hasFlag(PackageType value, PackageType flag) {
   return (static_cast<unsigned char>(value) &
           static_cast<unsigned char>(flag)) != 0;
 }
+
+enum class UserRole : uint16_t {
+  None = 0,
+  Viewer = 1 << 0,
+  Operator = 1 << 1,
+  OrgAdmin = 1 << 2,
+  SysAdmin = 1 << 3,
+
+  All = Viewer | Operator | OrgAdmin | SysAdmin
+};
+
+inline constexpr UserRole operator|(UserRole lhs, UserRole rhs) {
+  return static_cast<UserRole>(static_cast<uint16_t>(lhs) |
+                               static_cast<uint16_t>(rhs));
+}
+
+inline constexpr UserRole operator&(UserRole lhs, UserRole rhs) {
+  return static_cast<UserRole>(static_cast<uint16_t>(lhs) &
+                               static_cast<uint16_t>(rhs));
+}
+
+inline constexpr bool hasFlag(UserRole value, UserRole flag) {
+  return (static_cast<uint16_t>(value) & static_cast<uint16_t>(flag)) != 0;
+}
+
+struct UserContext {
+  std::string username;
+  UserRole role;
+  OrgId orgId;
+
+  UserContext() : username("anonymous"), role(UserRole::None), orgId(0) {}
+
+  UserContext(std::string u, UserRole r, OrgId o)
+      : username(std::move(u)), role(r), orgId(o) {}
+};
 
 enum class PackageStatus : unsigned char {
   Normal = 0,
@@ -149,8 +186,20 @@ struct UserSession {
   char username[32];
   pid_t session_pid;
 
+  UserRole role;
+  OrgId orgId;
+
   int max_processes;
   int current_processes;
+};
+
+struct TruckState {
+  bool is_present;
+  int id;
+  int current_load;
+  int max_load;
+  double current_weight;
+  double max_weight;
 };
 
 struct SharedState {
@@ -168,6 +217,7 @@ struct SharedState {
   bool force_truck_departure;
   bool p4_load_command;
   UserSession users[MAX_USERS_SESSIONS];
+  TruckState dock_truck;
 };
 
 struct CommandMessage {

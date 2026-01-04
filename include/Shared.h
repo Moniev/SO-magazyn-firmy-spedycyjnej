@@ -19,7 +19,7 @@ constexpr int SEM_KEY_ID = 5678;
 constexpr int MSG_KEY_ID = 9012;
 
 constexpr int MAX_PACKAGE_HISTORY = 6;
-constexpr int MAX_USERS_SESSIONS = 3;
+constexpr int MAX_USERS_SESSIONS = 5;
 
 using OrgId = int;
 

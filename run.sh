@@ -24,7 +24,7 @@ sleep 1
 ./build/belt &
 BELT_PID=$!
 
-echo -e "${GREEN}[sim] All of processes are currently runing.${RESET}"
+echo -e "${GREEN}[sim] All of processes are currently running.${RESET}"
 echo "Press Ctrl+C, to stop whole simulation"
 
 cleanup() {

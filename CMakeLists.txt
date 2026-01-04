@@ -26,6 +26,13 @@ add_compile_options(
 
 include(FetchContent)
 
+message(STATUS "Downloading nlohmann/json")
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
+
 message(STATUS "Downloading spdlog")
 FetchContent_Declare(
     spdlog
@@ -73,5 +80,3 @@ target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog nlohma
 gtest_discover_tests(unit_tests)
 
 message(STATUS "Build configurated")
-
-

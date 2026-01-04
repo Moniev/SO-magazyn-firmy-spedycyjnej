@@ -1,12 +1,16 @@
 #pragma once
 
 #include "Belt.h"
+#include "Dispatcher.h"
+#include "Express.h"
 #include "SessionManager.h"
 #include "Shared.h"
+#include "Truck.h"
 #include "spdlog/spdlog.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
@@ -24,6 +28,9 @@ protected:
 public:
   std::unique_ptr<SessionManager> session_store;
   std::unique_ptr<Belt> belt;
+  std::unique_ptr<Truck> truck;
+  std::unique_ptr<Dispatcher> dispatcher;
+  std::unique_ptr<Express> express;
 
   Manager(bool owner = false) : is_owner(owner) {
     int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
@@ -78,6 +85,20 @@ public:
         [this]() { this->waitForPackage(); },
         [this]() { this->signalPackageAdded(); },
         [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); });
+
+    truck = std::make_unique<Truck>(
+        shm, [this]() { this->lockDock(); }, [this]() { this->unlockDock(); },
+        [this]() { return this->receiveSignalBlocking(); });
+
+    express = std::make_unique<Express>(
+        shm, [this]() { this->lockDock(); }, [this]() { this->unlockDock(); },
+        [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); },
+        [this](SignalType s) { this->sendSignal(s); });
+
+    dispatcher = std::make_unique<Dispatcher>(
+        belt.get(), shm, [this]() { this->lockDock(); },
+        [this]() { this->unlockDock(); },
+        [this](SignalType s) { this->sendSignal(s); });
   }
 
   virtual ~Manager() {
@@ -138,6 +159,14 @@ public:
     } else {
       spdlog::info("[ipc manager] Signal {} sent.", (int)type);
     }
+  }
+
+  SignalType receiveSignalBlocking() {
+    CommandMessage msg;
+    if (msgrcv(msg_id, &msg, sizeof(int), 1, 0) != -1) {
+      return static_cast<SignalType>(msg.command_id);
+    }
+    return SIGNAL_NONE;
   }
 
   SignalType receiveSignalNonBlocking() {

@@ -1,3 +1,13 @@
+/**
+ * @file main.cpp
+ * @brief Master process responsible for IPC initialization and lifecycle
+ * management.
+ * * This process instantiates the Manager with the `owner=true` flag, which
+ * triggers the creation of Shared Memory, Semaphores, and Message Queues.
+ * It remains active to prevent the OS from potentially cleaning up resources
+ * while workers are still running.
+ */
+
 #include "../include/Manager.h"
 
 int main() {

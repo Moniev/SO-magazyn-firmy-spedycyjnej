@@ -1,3 +1,10 @@
+/**
+ * @file dispatcher_main.cpp
+ * @brief Consumer process that routes packages from the belt to the truck.
+ * * Uses the Dispatcher component to block on the belt (waiting for items)
+ * and then synchronize with the dock to perform the transfer.
+ */
+
 #include "../include/Manager.h"
 
 int main() {

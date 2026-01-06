@@ -1,3 +1,9 @@
+/**
+ * @file Manager.h
+ * @brief Central Orchestrator for IPC resource management and component
+ * coordination.
+ */
+
 #pragma once
 
 #include "Belt.h"
@@ -17,21 +23,44 @@
 #include <sys/shm.h>
 #include <unistd.h>
 
+/**
+ * @class Manager
+ * @brief The heart of the Warehouse System IPC.
+ * * This class is responsible for the allocation, attachment, and cleanup of
+ * System V IPC primitives: Shared Memory (SHM), Semaphores (SEM), and Message
+ * Queues (MSG).
+ * * It acts as a Facade, providing simplified methods for synchronization
+ * (locking) and communication (signaling) to the higher-level components like
+ * Belt or Truck.
+ */
 class Manager {
 protected:
-  int shm_id;
-  int sem_id;
-  int msg_id;
-  SharedState *shm;
-  bool is_owner;
+  int shm_id;       /**< System identifier for the Shared Memory segment. */
+  int sem_id;       /**< System identifier for the Semaphore set. */
+  int msg_id;       /**< System identifier for the Message Queue. */
+  SharedState *shm; /**< Pointer to the mapped SharedState structure in process
+                       memory. */
+  bool is_owner;    /**< Flag indicating if this instance is responsible for
+                       creating/destroying IPC. */
 
 public:
+  /** @name Managed Components
+   * Unique pointers to specialized logic modules, initialized via Dependency
+   * Injection.
+   * @{ */
   std::unique_ptr<SessionManager> session_store;
   std::unique_ptr<Belt> belt;
   std::unique_ptr<Truck> truck;
   std::unique_ptr<Dispatcher> dispatcher;
   std::unique_ptr<Express> express;
+  /** @} */
 
+  /**
+   * @brief Initializes the IPC Manager.
+   * @param owner If true, the manager creates new IPC resources and performs a
+   * hard reset. If false, it attempts to attach to existing segments created by
+   * a Master process.
+   */
   Manager(bool owner = false) : is_owner(owner) {
     int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
 
@@ -108,6 +137,11 @@ public:
         [this](SignalType s) { this->sendSignal(s); });
   }
 
+  /**
+   * @brief Cleanup handler.
+   * * Detaches from Shared Memory. If the instance is the owner, it explicitly
+   * marks all IPC resources for destruction (IPC_RMID) in the kernel.
+   */
   virtual ~Manager() {
     if (shmdt(shm) == -1) {
       spdlog::warn("[ipc manager] shmdt failed: {}", std::strerror(errno));
@@ -127,8 +161,14 @@ public:
     }
   }
 
+  /** @brief Returns a direct pointer to the Shared Memory segment. */
   SharedState *getState() { return shm; }
 
+  /**
+   * @brief Executes an atomic semaphore operation (P/V).
+   * @param semIdx Index of the semaphore in the set (e.g., SEM_MUTEX_BELT).
+   * @param op Operation value: -1 (Wait/Decrement), 1 (Signal/Increment).
+   */
   void semOperation(SemIndex semIdx, int op) {
     struct sembuf sb;
     sb.sem_num = static_cast<int>(semIdx);
@@ -144,18 +184,41 @@ public:
     }
   }
 
-  void lockBelt() { semOperation(SEM_MUTEX_BELT, -1); }
-  void unlockBelt() { semOperation(SEM_MUTEX_BELT, 1); }
+  /** @name Synchronization Methods
+   * Specialized wrappers for semaphore operations.
+   * @{ */
+  void lockBelt() {
+    semOperation(SEM_MUTEX_BELT, -1);
+  } /**< Mutual exclusion for the conveyor belt structure. */
+  void unlockBelt() {
+    semOperation(SEM_MUTEX_BELT, 1);
+  } /**< Release belt exclusion. */
 
-  void waitForEmptySlot() { semOperation(SEM_EMPTY_SLOTS, -1); }
-  void signalSlotFreed() { semOperation(SEM_EMPTY_SLOTS, 1); }
+  void waitForEmptySlot() {
+    semOperation(SEM_EMPTY_SLOTS, -1);
+  } /**< Block until space is available on the belt (Producer). */
+  void signalSlotFreed() {
+    semOperation(SEM_EMPTY_SLOTS, 1);
+  } /**< Signal that an item was removed (Consumer). */
 
-  void waitForPackage() { semOperation(SEM_FULL_SLOTS, -1); }
-  void signalPackageAdded() { semOperation(SEM_FULL_SLOTS, 1); }
+  void waitForPackage() {
+    semOperation(SEM_FULL_SLOTS, -1);
+  } /**< Block until an item is available on the belt (Consumer). */
+  void signalPackageAdded() {
+    semOperation(SEM_FULL_SLOTS, 1);
+  } /**< Signal that an item was added (Producer). */
 
-  void lockDock() { semOperation(SEM_DOCK_MUTEX, -1); }
-  void unlockDock() { semOperation(SEM_DOCK_MUTEX, 1); }
+  void lockDock() {
+    semOperation(SEM_DOCK_MUTEX, -1);
+  } /**< Mutual exclusion for the truck docking state. */
+  void unlockDock() {
+    semOperation(SEM_DOCK_MUTEX, 1);
+  } /**< Release dock exclusion. */
+  /** @} */
 
+  /** @name Signaling Methods
+   * Wrappers for Unix Message Queue operations.
+   * @{ */
   void sendSignal(SignalType type) {
     CommandMessage msg;
     msg.mtype = 1;
@@ -166,7 +229,7 @@ public:
     } else {
       spdlog::info("[ipc manager] Signal {} sent.", (int)type);
     }
-  }
+  } /**< Dispatches a command to the queue. */
 
   SignalType receiveSignalBlocking() {
     CommandMessage msg;
@@ -174,7 +237,7 @@ public:
       return static_cast<SignalType>(msg.command_id);
     }
     return SIGNAL_NONE;
-  }
+  } /**< Sleeps until a command is received. */
 
   SignalType receiveSignalNonBlocking() {
     CommandMessage msg;
@@ -182,5 +245,6 @@ public:
       return static_cast<SignalType>(msg.command_id);
     }
     return SIGNAL_NONE;
-  }
+  } /**< Polls the queue for a command without sleeping. */
+  /** @} */
 };

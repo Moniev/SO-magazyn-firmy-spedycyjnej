@@ -91,9 +91,14 @@ rebuild: clean build
 package: build
 	@echo -e "$(CYAN)[info] Packaging binaries into $(PACKAGE_NAME)...$(RESET)"
 	@tar -czf $(PACKAGE_NAME) \
-		-C $(BUILD_DIR) master belt_main dispatcher_main express_main truck_main \
-		-C .. run.sh README.md
-	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$0"
+		-C $(BUILD_DIR) main belt dispatcher express truck \
+		-C . run.sh README.md
+	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$(RESET)"
+
+release-tag:
+	@echo -e "$(YELLOW)To release this version, run:$(RESET)"
+	@echo "git tag -a v$(VERSION) -m 'Release v$(VERSION)'"
+	@echo "git push origin v$(VERSION)"
 
 help:
 	@echo -e "$(CYAN)Warehouse IPC System - Command Center$(RESET)"

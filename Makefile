@@ -37,6 +37,20 @@ ipc:
 	@echo -e "$(CYAN)[info] Current IPC Resources for $(shell whoami):$(RESET)"
 	@ipcs -m -s -q | grep $(shell whoami) || echo -e "$(YELLOW)No active IPC resources found.$(RESET)"
 
+ipc-clean:
+	@echo -e "$(YELLOW)[info] Cleaning up stale IPC resources...$(RESET)"
+	@ipcs -m | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -m
+	@ipcs -s | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -s
+	@ipcs -q | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -q
+	@echo -e "$(GREEN)[success] IPC resources cleared.$(RESET)"
+
+ipc-fclean:
+	@echo -e "$(RED)[danger] Cleaning ALL system IPC resources with sudo...$(RESET)"
+	@sudo ipcs -m | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -m
+	@sudo ipcs -s | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -s
+	@sudo ipcs -q | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -q
+	@echo -e "$(GREEN)[success] All system IPC resources have been wiped.$(RESET)"
+
 test: build
 	@echo -e "$(GREEN)[info] Running unit and integration tests...$(RESET)"
 	@cd $(BUILD_DIR) && ctest --output-on-failure

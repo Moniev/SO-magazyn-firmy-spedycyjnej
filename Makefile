@@ -33,6 +33,11 @@ run: build
 	@chmod +x run.sh
 	@./run.sh
 
+terminal:
+	@ipcs -m | grep $(shell whoami) > /dev/null || (echo -e "$(RED)[error] Simulation not running! Run 'make run' first.$(RESET)" && exit 1)
+	@echo -e "$(CYAN)[info] Connecting to Warehouse Terminal...$(RESET)"
+	@./$(BUILD_DIR)/terminal
+
 ipc:
 	@echo -e "$(CYAN)[info] Current IPC Resources for $(shell whoami):$(RESET)"
 	@ipcs -m -s -q | grep $(shell whoami) || echo -e "$(YELLOW)No active IPC resources found.$(RESET)"
@@ -105,7 +110,7 @@ rebuild: clean build
 package: build
 	@echo -e "$(CYAN)[info] Packaging binaries into $(PACKAGE_NAME)...$(RESET)"
 	@tar -czf $(PACKAGE_NAME) \
-		-C $(BUILD_DIR) main belt dispatcher express truck \
+		-C $(BUILD_DIR) main belt dispatcher express truck terminal \
 		-C . run.sh README.md
 	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$(RESET)"
 
@@ -116,20 +121,27 @@ release-tag:
 
 help:
 	@echo -e "$(CYAN)Warehouse IPC System - Command Center$(RESET)"
-	@echo "---------------------------------------------------"
+	@echo ""
 	@echo -e "$(YELLOW)Local Commands:$(RESET)"
-	@echo "  make             - Build the project"
-	@echo "  make run         - Execute simulation locally"
-	@echo "  make test        - Run tests locally"
-	@echo "  make docs        - Generate & open Doxygen"
-	@echo "  make ipc         - Show active Linux IPC resources"
+	@echo "  make             - Build the project binaries"
+	@echo "  make run         - Execute simulation (background workers)"
+	@echo "  make terminal    - Open interactive console (attach to running sim)"
+	@echo "  make test        - Run GTest/CTest suite locally"
 	@echo ""
 	@echo -e "$(YELLOW)Docker Commands (Alpine):$(RESET)"
-	@echo "  make docker-build - Build Alpine Docker image"
-	@echo "  make docker-run   - Run simulation in Docker"
-	@echo "  make docker-test  - Run tests inside Docker"
-	@echo "  make docker-clean - Remove Docker containers/images"
+	@echo "  make docker-build - Build Alpine Linux Docker image"
+	@echo "  make docker-run   - Run simulation inside Docker container"
+	@echo "  make docker-test  - Run tests inside Docker environment"
+	@echo "  make docker-clean - Remove Docker containers and images"
 	@echo ""
-	@echo -e "$(YELLOW)Maintenance:$(RESET)"
-	@echo "  make format      - Apply clang-format"
-	@echo "  make clean       - Wipe everything"
+	@echo -e "$(YELLOW)IPC Management:$(RESET)"
+	@echo "  make ipc         - List active SHM/SEM/MSG resources"
+	@echo "  make ipc-clean   - Remove IPC resources owned by $(shell whoami)"
+	@echo "  make ipc-fclean  - Force remove ALL system IPC (requires sudo)"
+	@echo ""
+	@echo -e "$(YELLOW)Maintenance & Distribution:$(RESET)"
+	@echo "  make package     - Create .tar.gz bundle for release"
+	@echo "  make docs        - Generate and open Doxygen documentation"
+	@echo "  make format      - Apply clang-format to all files"
+	@echo "  make clean       - Wipe build directory, logs and docs"
+	@echo "  make rebuild     - Full clean and build"

@@ -1,8 +1,10 @@
 BUILD_DIR  = build
 LOG_DIR    = logs
 DOC_DIR    = docs
+DOCKER_DIR = docker
 Doxyfile   = Doxyfile
-SOURCES    := $(shell find src include tests -name '*.cpp' -o -name '*.h')
+SOURCES    := $(shell find src include test -name '*.cpp' -o -name '*.h')
+PACKAGE_NAME = warehouse-ipc-linux-x64.tar.gz
 
 export CC  = clang
 export CXX = clang++
@@ -35,9 +37,39 @@ ipc:
 	@echo -e "$(CYAN)[info] Current IPC Resources for $(shell whoami):$(RESET)"
 	@ipcs -m -s -q | grep $(shell whoami) || echo -e "$(YELLOW)No active IPC resources found.$(RESET)"
 
+ipc-clean:
+	@echo -e "$(YELLOW)[info] Cleaning up stale IPC resources...$(RESET)"
+	@ipcs -m | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -m
+	@ipcs -s | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -s
+	@ipcs -q | grep $(shell whoami) | awk '{print $$2}' | xargs -r ipcrm -q
+	@echo -e "$(GREEN)[success] IPC resources cleared.$(RESET)"
+
+ipc-fclean:
+	@echo -e "$(RED)[danger] Cleaning ALL system IPC resources with sudo...$(RESET)"
+	@sudo ipcs -m | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -m
+	@sudo ipcs -s | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -s
+	@sudo ipcs -q | awk 'NR>3 {print $$2}' | xargs -r -n1 sudo ipcrm -q
+	@echo -e "$(GREEN)[success] All system IPC resources have been wiped.$(RESET)"
+
 test: build
 	@echo -e "$(GREEN)[info] Running unit and integration tests...$(RESET)"
 	@cd $(BUILD_DIR) && ctest --output-on-failure
+
+docker-build:
+	@echo -e "$(CYAN)[info] Building Alpine-based Docker image...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml build
+
+docker-run:
+	@echo -e "$(GREEN)[info] Launching simulation in Alpine container...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml up
+
+docker-test:
+	@echo -e "$(CYAN)[info] Running tests inside Docker container...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml run --rm warehouse-sim make test
+
+docker-clean:
+	@echo -e "$(YELLOW)[info] Removing Docker artifacts...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml down --rmi all
 
 docs:
 	@if [ ! -f $(Doxyfile) ]; then \
@@ -70,14 +102,34 @@ clean:
 
 rebuild: clean build
 
+package: build
+	@echo -e "$(CYAN)[info] Packaging binaries into $(PACKAGE_NAME)...$(RESET)"
+	@tar -czf $(PACKAGE_NAME) \
+		-C $(BUILD_DIR) main belt dispatcher express truck \
+		-C . run.sh README.md
+	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$(RESET)"
+
+release-tag:
+	@echo -e "$(YELLOW)To release this version, run:$(RESET)"
+	@echo "git tag -a v$(VERSION) -m 'Release v$(VERSION)'"
+	@echo "git push origin v$(VERSION)"
+
 help:
 	@echo -e "$(CYAN)Warehouse IPC System - Command Center$(RESET)"
 	@echo "---------------------------------------------------"
-	@echo -e "$(GREEN)make$(RESET)         - Build the project (CMake)"
-	@echo -e "$(GREEN)make run$(RESET)     - Build and execute simulation (run.sh)"
-	@echo -e "$(GREEN)make test$(RESET)    - Run GTest/CTest suite"
-	@echo -e "$(GREEN)make docs$(RESET)    - Generate and open Doxygen HTML"
-	@echo -e "$(GREEN)make ipc$(RESET)     - Show active SHM/SEM/MSG resources"
-	@echo -e "$(GREEN)make format$(RESET)  - Apply clang-format to all files"
-	@echo -e "$(GREEN)make clean$(RESET)   - Wipe build, logs and docs"
-	@echo -e "$(GREEN)make rebuild$(RESET) - Clean and build from scratch"
+	@echo -e "$(YELLOW)Local Commands:$(RESET)"
+	@echo "  make             - Build the project"
+	@echo "  make run         - Execute simulation locally"
+	@echo "  make test        - Run tests locally"
+	@echo "  make docs        - Generate & open Doxygen"
+	@echo "  make ipc         - Show active Linux IPC resources"
+	@echo ""
+	@echo -e "$(YELLOW)Docker Commands (Alpine):$(RESET)"
+	@echo "  make docker-build - Build Alpine Docker image"
+	@echo "  make docker-run   - Run simulation in Docker"
+	@echo "  make docker-test  - Run tests inside Docker"
+	@echo "  make docker-clean - Remove Docker containers/images"
+	@echo ""
+	@echo -e "$(YELLOW)Maintenance:$(RESET)"
+	@echo "  make format      - Apply clang-format"
+	@echo "  make clean       - Wipe everything"

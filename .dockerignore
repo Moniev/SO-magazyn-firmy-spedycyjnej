@@ -1,0 +1,5 @@
+build/
+logs/
+docs/
+.git/
+*.tar.gz

@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  warehouse-sim:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: warehouse_alpine_sim
+    ipc: host
+    privileged: true
+    volumes:
+      - ../logs:/app/logs
+    stdin_open: true
+    tty: true

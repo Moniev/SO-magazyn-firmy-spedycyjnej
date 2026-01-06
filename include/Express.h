@@ -1,3 +1,8 @@
+/**
+ * @file Express.h
+ * @brief High-priority VIP package delivery logic.
+ */
+
 #pragma once
 
 #include "Shared.h"
@@ -5,16 +10,35 @@
 #include <functional>
 #include <random>
 
+/**
+ * @class Express
+ * @brief Manages "Express" or "VIP" package logistics.
+ * * The Express class implements a priority bypass mechanism. Unlike standard
+ * packages that must travel through the circular buffer (Belt), Express
+ * packages are generated and loaded directly into the Truck at the dock.
+ * * This class handles cross-mutex synchronization, as it must lock both the
+ * Belt metrics (to generate a unique ID) and the Dock metrics (to perform the
+ * load).
+ */
 class Express {
 private:
-  SharedState *shm;
+  SharedState *shm; /**< Pointer to the shared memory state. */
 
-  std::function<void()> lock_dock_fn;
-  std::function<void()> unlock_dock_fn;
-  std::function<void()> lock_belt_fn;
-  std::function<void()> unlock_belt_fn;
-  std::function<void(SignalType)> send_signal_fn;
+  /** @name Synchronization and Messaging Hooks
+   * @{ */
+  std::function<void()> lock_dock_fn;   /**< Locks the Dock mutex. */
+  std::function<void()> unlock_dock_fn; /**< Unlocks the Dock mutex. */
+  std::function<void()>
+      lock_belt_fn; /**< Locks the Belt mutex for ID generation. */
+  std::function<void()> unlock_belt_fn; /**< Unlocks the Belt mutex. */
+  std::function<void(SignalType)>
+      send_signal_fn; /**< Dispatches signals to the Message Queue. */
+  /** @} */
 
+  /**
+   * @brief Generates a random weight for the VIP package.
+   * @return double Weight between 1.0 and 5.0 units.
+   */
   double getRandomWeight() {
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -23,6 +47,9 @@ private:
   }
 
 public:
+  /**
+   * @brief Constructs an Express handler with required IPC functional hooks.
+   */
   Express(SharedState *s, std::function<void()> lock_dock,
           std::function<void()> unlock_dock, std::function<void()> lock_belt,
           std::function<void()> unlock_belt,
@@ -31,6 +58,23 @@ public:
         lock_belt_fn(lock_belt), unlock_belt_fn(unlock_belt),
         send_signal_fn(send_signal) {}
 
+  /**
+   * @brief Executes a VIP delivery sequence.
+   * * @process_flow
+   * 1. **ID Generation**: Locks the belt to increment the global package
+   * counter.
+   * 2. **Package Creation**: Instantiates a Package with
+   * `PackageStatus::Express`.
+   * 3. **Dock Verification**: Locks the dock and checks if a truck is
+   * available.
+   * 4. **Direct Loading**: If the truck has capacity (count and weight), loads
+   * the package immediately.
+   * 5. **Signaling**: If the VIP package fills the truck, it triggers an
+   * immediate `SIGNAL_DEPARTURE`.
+   * * @note If no truck is present or the truck is full, the VIP package is
+   * effectively rejected to prevent the Express process from blocking the
+   * entire system.
+   */
   void deliverVipPackage() {
     if (!shm)
       return;

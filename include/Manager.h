@@ -62,7 +62,7 @@ public:
    * a Master process.
    */
   Manager(bool owner = false) : is_owner(owner) {
-    int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
+    int flags = is_owner ? (IPC_CREAT | 0666) : 0666;
 
     if (is_owner) {
       int old_shm = shmget(SHM_KEY_ID, 0, 0);

@@ -63,7 +63,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
 message(STATUS "Adding executables")
-set(BINS main dispatcher belt express truck)
+set(BINS main dispatcher belt express truck terminal)
 foreach(BIN ${BINS})
   if(${BIN} STREQUAL "main")
     add_executable(${BIN} src/main.cpp)

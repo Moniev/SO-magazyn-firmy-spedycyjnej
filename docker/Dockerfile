@@ -12,7 +12,6 @@ WORKDIR /app
 
 COPY . .
 
-RUN rm -rf build && make build
 RUN make build
 
 FROM alpine:latest
@@ -25,7 +24,15 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY --from=builder /app/build/ ./build/
+RUN mkdir -p build logs
+
+COPY --from=builder /app/build/main ./build/
+COPY --from=builder /app/build/belt ./build/
+COPY --from=builder /app/build/dispatcher ./build/
+COPY --from=builder /app/build/express ./build/
+COPY --from=builder /app/build/truck ./build/
+COPY --from=builder /app/build/terminal ./build/
+
 COPY --from=builder /app/run.sh .
 
 RUN chmod +x run.sh

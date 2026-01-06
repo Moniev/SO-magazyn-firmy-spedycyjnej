@@ -65,7 +65,8 @@ private:
     }
 
     std::cout << "║ help                 ║ Print menu                    ║\n";
-    std::cout << "║ exit / quit          ║ Exit from console             ║\n";
+    std::cout << "║ Ctrl + C             ║ Exit from console             ║\n";
+    std::cout << "║ exit / quit          ║ As above                      ║\n";
     std::cout << "╚══════════════════════╩═══════════════════════════════╝\n";
   }
 

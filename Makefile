@@ -76,6 +76,10 @@ docker-clean:
 	@echo -e "$(YELLOW)[info] Removing Docker artifacts...$(RESET)"
 	@docker compose -f $(DOCKER_DIR)/docker-compose.yml down --rmi all
 
+docker-terminal:
+	@echo -e "$(CYAN)[info] Attaching to Warehouse Terminal inside Docker...$(RESET)"
+	@docker exec -it warehouse_alpine_sim ./build/terminal
+
 docs:
 	@if [ ! -f $(Doxyfile) ]; then \
 		echo -e "$(RED)[error] $(Doxyfile) not found! Run 'doxygen -g' first.$(RESET)"; \
@@ -133,6 +137,7 @@ help:
 	@echo "  make docker-run   - Run simulation inside Docker container"
 	@echo "  make docker-test  - Run tests inside Docker environment"
 	@echo "  make docker-clean - Remove Docker containers and images"
+	@echo "  make docker-terminal - Run terminal binary in docker environment"
 	@echo ""
 	@echo -e "$(YELLOW)IPC Management:$(RESET)"
 	@echo "  make ipc         - List active SHM/SEM/MSG resources"

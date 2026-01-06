@@ -4,6 +4,7 @@ DOC_DIR    = docs
 DOCKER_DIR = docker
 Doxyfile   = Doxyfile
 SOURCES    := $(shell find src include test -name '*.cpp' -o -name '*.h')
+PACKAGE_NAME = warehouse-ipc-linux-x64.tar.gz
 
 export CC  = clang
 export CXX = clang++
@@ -86,6 +87,13 @@ clean:
 	@echo -e "$(GREEN)[success] Clean complete.$(RESET)"
 
 rebuild: clean build
+
+package: build
+	@echo -e "$(CYAN)[info] Packaging binaries into $(PACKAGE_NAME)...$(RESET)"
+	@tar -czf $(PACKAGE_NAME) \
+		-C $(BUILD_DIR) master belt_main dispatcher_main express_main truck_main \
+		-C .. run.sh README.md
+	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$0"
 
 help:
 	@echo -e "$(CYAN)Warehouse IPC System - Command Center$(RESET)"

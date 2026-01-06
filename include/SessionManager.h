@@ -1,3 +1,8 @@
+/**
+ * @file SessionManager.h
+ * @brief Management of active process sessions and resource quotas.
+ */
+
 #pragma once
 
 #include "Shared.h"
@@ -7,18 +12,51 @@
 #include <string>
 #include <unistd.h>
 
+/**
+ * @class SessionManager
+ * @brief Orchestrates user logins, process quotas, and authorization within
+ * IPC.
+ * * The SessionManager ensures that every process connecting to the Warehouse
+ * System is registered in the Shared Memory `users` table. It tracks process
+ * IDs (PIDs), enforces limits on concurrent sub-processes, and manages
+ * role-based access control.
+ */
 class SessionManager {
 private:
-  SharedState *shm;
-  int current_session = -1;
+  SharedState
+      *shm; /**< Pointer to the shared state containing the session table. */
+  int current_session =
+      -1; /**< Index of the currently active session in SHM users array. */
+
+  /** @name Synchronization Callbacks
+   * Wrappers for semaphore operations to ensure thread-safe updates to the
+   * session table.
+   * @{ */
   std::function<void()> lock_fn;
   std::function<void()> unlock_fn;
-
+  /** @} */
 public:
+  /**
+   * @brief Constructs a SessionManager.
+   * @param shared_state Pointer to SharedState.
+   * @param lock Mutex lock for the session registry.
+   * @param unlock Mutex unlock for the session registry.
+   */
   SessionManager(SharedState *shared_state, std::function<void()> lock,
                  std::function<void()> unlock)
       : shm(shared_state), lock_fn(lock), unlock_fn(unlock) {}
 
+  /**
+   * @brief Registers a new process session in Shared Memory.
+   * * Scans for duplicate usernames and available slots. If successful,
+   * initializes a UserSession entry with the provided credentials and current
+   * PID.
+   * @param name Unique username for the session.
+   * @param role Bitmask of permissions (UserRole).
+   * @param orgId Identifier of the organization.
+   * @param max_procs Maximum number of sub-processes this session can spawn.
+   * @return true if login succeeded, false if duplicate found or limit reached.
+   */
   bool login(const std::string &name, UserRole role, OrgId orgId,
              int max_procs = 5) {
     if (!shm)
@@ -71,6 +109,11 @@ public:
     return true;
   }
 
+  /**
+   * @brief Marks the current session as inactive and clears security
+   * credentials.
+   * @note After logout, current_session is reset to -1.
+   */
   void logout() {
     if (current_session == -1 || !shm)
       return;
@@ -90,6 +133,10 @@ public:
     unlock_fn();
   }
 
+  /**
+   * @brief Checks and increments the process quota for the current session.
+   * @return true if a new process can be spawned, false if quota is exceeded.
+   */
   bool trySpawnProcess() {
     if (current_session == -1 || !shm)
       return false;
@@ -104,6 +151,10 @@ public:
     return success;
   }
 
+  /**
+   * @brief Decrements the active process count for the current session.
+   * @note Prevents underflow by checking if count > 0.
+   */
   void reportProcessFinished() {
     if (current_session == -1 || !shm)
       return;
@@ -114,11 +165,13 @@ public:
     unlock_fn();
   }
 
+  /** @brief Returns the permission bitmask of the current user. */
   UserRole getCurrentRole() {
     if (current_session == -1 || !shm)
       return UserRole::None;
     return shm->users[current_session].role;
   }
 
+  /** @brief Returns the index of the current session in SHM. */
   int getSessionIndex() const { return current_session; }
 };

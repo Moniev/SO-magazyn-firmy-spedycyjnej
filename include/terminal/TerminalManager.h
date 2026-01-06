@@ -1,3 +1,8 @@
+/**
+ * @file TerminalManager.h
+ * @brief The main interactive loop for the Operator Console.
+ */
+
 #pragma once
 
 #include "../Shared.h"
@@ -8,11 +13,22 @@
 #include <iostream>
 #include <string>
 
+/**
+ * @class TerminalManager
+ * @brief Manages the standard input/output (stdio) loop for user interaction.
+ * * It retrieves the current user's session context (Username, Role, OrgID)
+ * to render the header and prompt. It reads input, resolves commands, and
+ * triggers the appropriate TerminalAction.
+ */
 class TerminalManager {
 private:
-  Manager *manager;
-  bool active;
+  Manager *manager; /**< Pointer to the central IPC Manager. */
+  bool active;      /**< Loop control flag. */
 
+  /**
+   * @brief Retrieves the active session for the current process.
+   * @return Pointer to UserSession or nullptr if not logged in.
+   */
   UserSession *getCurrentSession() {
     int idx = manager->session_store->getSessionIndex();
     if (idx >= 0 && idx < MAX_USERS_SESSIONS) {
@@ -21,6 +37,7 @@ private:
     return nullptr;
   }
 
+  /** @brief Renders the dashboard ASCII header with session info. */
   void printHeader() {
     UserSession *s = getCurrentSession();
     std::string user = s ? s->username : "Unknown";
@@ -29,7 +46,7 @@ private:
 
     std::cout << "\n";
     std::cout << "╔══════════════════════════════════════════════════════╗\n";
-    std::cout << "║            WAREHOUSE COMMAND CENTER v2.0             ║\n";
+    std::cout << "║             WAREHOUSE COMMAND CENTER v2.0            ║\n";
     std::cout << "╠══════════════════════════════════════════════════════╣\n";
 
     std::cout << "║ User: " << std::left << std::setw(15) << user
@@ -52,6 +69,7 @@ private:
     std::cout << "╚══════════════════════╩═══════════════════════════════╝\n";
   }
 
+  /** @brief Renders the prompt string based on privilege level (Green/Red). */
   void printPrompt() {
     UserSession *s = getCurrentSession();
     if (s && hasFlag(s->role, UserRole::SysAdmin)) {
@@ -62,8 +80,18 @@ private:
   }
 
 public:
+  /**
+   * @brief Initializes the CLI manager.
+   * @param mgr Pointer to the initialized IPC Manager instance.
+   */
   TerminalManager(Manager *mgr) : manager(mgr), active(true) {}
 
+  /**
+   * @brief Starts the read-eval-print loop (REPL).
+   * * Reads stdin line-by-line, converts to lowercase, resolves commands,
+   * and delegates to TerminalActions.
+   * * Terminates when 'exit' is typed or 'stop' (if admin) is executed.
+   */
   void run() {
     if (manager->session_store->getSessionIndex() == -1) {
       std::cerr << "Terminal error: Not logged in via SessionManager!\n";

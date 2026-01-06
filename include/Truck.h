@@ -1,3 +1,8 @@
+/**
+ * @file Truck.h
+ * @brief Logic for the logistics vehicle lifecycle.
+ */
+
 #pragma once
 
 #include "Shared.h"
@@ -5,14 +10,35 @@
 #include <functional>
 #include <random>
 
+/**
+ * @class Truck
+ * @brief Simulates an autonomous transport vehicle driver.
+ * * The Truck class operates as a state machine that cycles through:
+ * 1. **Arrival**: Checks into the dock (if empty).
+ * 2. **Loading**: Blocks on a message queue signal (WAITING state).
+ * 3. **Departure**: Resets the dock state and increments global stats.
+ * 4. **Delivery**: Simulates travel time (sleep) before returning for the next
+ * shift.
+ */
 class Truck {
 private:
-  SharedState *shm;
+  SharedState *shm; /**< Pointer to the Shared Memory segment. */
 
-  std::function<void()> lock_dock_fn;
-  std::function<void()> unlock_dock_fn;
-  std::function<SignalType()> wait_for_signal_fn;
+  /** @name Synchronization Hooks
+   * @{ */
+  std::function<void()> lock_dock_fn;   /**< Locks the Dock mutex. */
+  std::function<void()> unlock_dock_fn; /**< Unlocks the Dock mutex. */
+  std::function<SignalType()>
+      wait_for_signal_fn; /**< Blocks execution until a departure signal is
+                             received. */
+  /** @} */
 
+  /**
+   * @brief Generates random capacity specifications for a new truck.
+   * * Assigns a random `max_load` (5-15 items) and `max_weight` (50-150kg).
+   * * Sets the `is_present` flag to true and resets current load counters.
+   * @param truck Reference to the TruckState in shared memory.
+   */
   void randomizeTruckSpecs(TruckState &truck) {
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -28,12 +54,34 @@ private:
   }
 
 public:
+  /**
+   * @brief Constructs a Truck driver instance.
+   * @param s Pointer to SharedState.
+   * @param lock_dock Callback for acquiring dock mutex.
+   * @param unlock_dock Callback for releasing dock mutex.
+   * @param wait_for_signal Callback for blocking message queue reception.
+   */
   Truck(SharedState *s, std::function<void()> lock_dock,
         std::function<void()> unlock_dock,
         std::function<SignalType()> wait_for_signal)
       : shm(s), lock_dock_fn(lock_dock), unlock_dock_fn(unlock_dock),
         wait_for_signal_fn(wait_for_signal) {}
 
+  /**
+   * @brief Main execution loop for the truck process.
+   * * @process_flow
+   * 1. **Queueing**: If the dock is occupied (`is_present == true`), waits 1s
+   * and retries.
+   * 2. **Docking**: Acquires lock, initializes specs via `randomizeTruckSpecs`,
+   * and releases lock.
+   * 3. **Waiting**: Blocks on `wait_for_signal_fn()` until `SIGNAL_DEPARTURE`
+   * or `SIGNAL_END_WORK`.
+   * 4. **Departing**: Updates global `trucks_completed` counter and clears
+   * `is_present`.
+   * 5. **Transit**: Sleeps for a random duration (2-5s) to simulate delivery.
+   * * Loop continues until `shm->running` is false or `SIGNAL_END_WORK` is
+   * received.
+   */
   void run() {
     spdlog::info("[truck] Driver ready. Starting shift.");
 

@@ -64,52 +64,40 @@ public:
     if (!belt || !shm)
       return;
 
+    bool dock_ready = false;
+    while (!dock_ready && shm->running) {
+      lock_dock_fn();
+      if (shm->dock_truck.is_present &&
+          shm->dock_truck.current_load < shm->dock_truck.max_load) {
+        dock_ready = true;
+        unlock_dock_fn();
+      } else {
+        if (shm->dock_truck.is_present)
+          send_signal_fn(SIGNAL_DEPARTURE);
+        unlock_dock_fn();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    }
+
     Package pkg = belt->pop();
+
     if (pkg.id == 0)
       return;
 
-    bool loaded = false;
+    lock_dock_fn();
+    if (shm->dock_truck.is_present &&
+        shm->dock_truck.current_load < shm->dock_truck.max_load) {
+      shm->dock_truck.current_load++;
+      shm->dock_truck.current_weight += pkg.weight;
 
-    while (!loaded && shm->running) {
-      lock_dock_fn();
-
-      if (!shm->dock_truck.is_present) {
-        spdlog::warn("[dispatcher] No truck in dock! Pkg {} waiting...",
-                     pkg.id);
-        unlock_dock_fn();
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
-      }
-
-      TruckState &truck = shm->dock_truck;
-
-      if (truck.current_load < truck.max_load) {
-        truck.current_load++;
-        truck.current_weight += pkg.weight;
-        pkg.pushAction(ActionType::LoadedToTruck, getpid());
-
-        spdlog::info("[dispatcher] Loaded Pkg {} into Truck {}. Load: {}/{}",
-                     pkg.id, truck.id, truck.current_load, truck.max_load);
-
-        loaded = true;
-
-        if (truck.current_load >= truck.max_load) {
-          spdlog::info(
-              "[dispatcher] Truck {} reached capacity. Sending DEPARTURE.",
-              truck.id);
-          send_signal_fn(SIGNAL_DEPARTURE);
-        }
-      } else {
-        spdlog::warn("[dispatcher] Truck {} is FULL. Signaling DEPARTURE again "
-                     "and waiting for new truck for Pkg {}.",
-                     truck.id, pkg.id);
+      if (shm->dock_truck.current_load >= shm->dock_truck.max_load) {
         send_signal_fn(SIGNAL_DEPARTURE);
-        unlock_dock_fn();
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
       }
-
-      unlock_dock_fn();
+    } else {
+      spdlog::critical(
+          "[dispatcher] Race condition! Truck vanished after pop for Pkg {}",
+          pkg.id);
     }
+    unlock_dock_fn();
   }
 };

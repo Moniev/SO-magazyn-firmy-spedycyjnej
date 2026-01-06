@@ -12,6 +12,7 @@ WORKDIR /app
 
 COPY . .
 
+RUN rm -rf build && make build
 RUN make build
 
 FROM alpine:latest

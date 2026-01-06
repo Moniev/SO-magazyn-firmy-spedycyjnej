@@ -1,8 +1,9 @@
 BUILD_DIR  = build
 LOG_DIR    = logs
 DOC_DIR    = docs
+DOCKER_DIR = docker
 Doxyfile   = Doxyfile
-SOURCES    := $(shell find src include tests -name '*.cpp' -o -name '*.h')
+SOURCES    := $(shell find src include test -name '*.cpp' -o -name '*.h')
 
 export CC  = clang
 export CXX = clang++
@@ -39,6 +40,22 @@ test: build
 	@echo -e "$(GREEN)[info] Running unit and integration tests...$(RESET)"
 	@cd $(BUILD_DIR) && ctest --output-on-failure
 
+docker-build:
+	@echo -e "$(CYAN)[info] Building Alpine-based Docker image...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml build
+
+docker-run:
+	@echo -e "$(GREEN)[info] Launching simulation in Alpine container...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml up
+
+docker-test:
+	@echo -e "$(CYAN)[info] Running tests inside Docker container...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml run --rm warehouse-sim make test
+
+docker-clean:
+	@echo -e "$(YELLOW)[info] Removing Docker artifacts...$(RESET)"
+	@docker compose -f $(DOCKER_DIR)/docker-compose.yml down --rmi all
+
 docs:
 	@if [ ! -f $(Doxyfile) ]; then \
 		echo -e "$(RED)[error] $(Doxyfile) not found! Run 'doxygen -g' first.$(RESET)"; \
@@ -73,11 +90,19 @@ rebuild: clean build
 help:
 	@echo -e "$(CYAN)Warehouse IPC System - Command Center$(RESET)"
 	@echo "---------------------------------------------------"
-	@echo -e "$(GREEN)make$(RESET)         - Build the project (CMake)"
-	@echo -e "$(GREEN)make run$(RESET)     - Build and execute simulation (run.sh)"
-	@echo -e "$(GREEN)make test$(RESET)    - Run GTest/CTest suite"
-	@echo -e "$(GREEN)make docs$(RESET)    - Generate and open Doxygen HTML"
-	@echo -e "$(GREEN)make ipc$(RESET)     - Show active SHM/SEM/MSG resources"
-	@echo -e "$(GREEN)make format$(RESET)  - Apply clang-format to all files"
-	@echo -e "$(GREEN)make clean$(RESET)   - Wipe build, logs and docs"
-	@echo -e "$(GREEN)make rebuild$(RESET) - Clean and build from scratch"
+	@echo -e "$(YELLOW)Local Commands:$(RESET)"
+	@echo "  make             - Build the project"
+	@echo "  make run         - Execute simulation locally"
+	@echo "  make test        - Run tests locally"
+	@echo "  make docs        - Generate & open Doxygen"
+	@echo "  make ipc         - Show active Linux IPC resources"
+	@echo ""
+	@echo -e "$(YELLOW)Docker Commands (Alpine):$(RESET)"
+	@echo "  make docker-build - Build Alpine Docker image"
+	@echo "  make docker-run   - Run simulation in Docker"
+	@echo "  make docker-test  - Run tests inside Docker"
+	@echo "  make docker-clean - Remove Docker containers/images"
+	@echo ""
+	@echo -e "$(YELLOW)Maintenance:$(RESET)"
+	@echo "  make format      - Apply clang-format"
+	@echo "  make clean       - Wipe everything"

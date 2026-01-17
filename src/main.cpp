@@ -1,32 +1,103 @@
 /**
  * @file main.cpp
- * @brief Master process responsible for IPC initialization and lifecycle
- * management.
- * * This process instantiates the Manager with the `owner=true` flag, which
- * triggers the creation of Shared Memory, Semaphores, and Message Queues.
- * It remains active to prevent the OS from potentially cleaning up resources
- * while workers are still running.
+ * @brief Master Orchestrator - Replaces run.sh functionality.
+ * * Initializes IPC resources using Manager(true).
+ * * Spawns worker processes using fork() and execv().
+ * * Monitors child processes and handles clean shutdown (SIGINT).
  */
 
 #include "../include/Config.h"
 #include "../include/Manager.h"
+#include <csignal>
 #include <filesystem>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <vector>
+
+volatile std::sig_atomic_t stop_requested = 0;
+std::vector<pid_t> children_pids;
+
+/**
+ * @brief Signal handler for Ctrl+C (SIGINT).
+ * Sets the flag to break the main loop.
+ */
+void handleSigint(int) { stop_requested = 1; }
+
+/**
+ * @brief Spawns a child process using fork/exec pattern.
+ * @param binary_path Relative or absolute path to the executable (e.g.
+ * "./build/belt").
+ * @param proc_name Name of the process (passed as argv[0]).
+ */
+void spawnChild(const std::string &binary_path, const std::string &proc_name) {
+  pid_t pid = fork();
+
+  if (pid < 0) {
+    spdlog::critical("[master] Failed to fork process: {}", proc_name);
+    exit(1);
+  }
+
+  if (pid == 0) {
+
+    std::vector<char *> args;
+    args.push_back(const_cast<char *>(proc_name.c_str()));
+    args.push_back(nullptr);
+
+    execv(binary_path.c_str(), args.data());
+
+    perror("execv failed");
+    exit(1);
+  } else {
+    spdlog::info("[master] Spawned {} (PID: {})", proc_name, pid);
+    children_pids.push_back(pid);
+  }
+}
 
 int main() {
+  std::signal(SIGINT, handleSigint);
+
   if (!std::filesystem::exists("logs")) {
     std::filesystem::create_directory("logs");
   }
 
   Config::get().setupLogger("system-master");
+  spdlog::info("[master] Starting Warehouse Orchestrator...");
 
   Manager manager(true);
 
-  spdlog::info("[ipc manager] Warehouse System Initialized.");
+  spawnChild("./build/truck", "truck");
+  spawnChild("./build/dispatcher", "dispatcher");
+  spawnChild("./build/express", "express");
 
-  while (manager.getState()->running) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+  spawnChild("./build/belt", "belt");
+
+  spdlog::info("[master] All systems operational. Press Ctrl+C to stop.");
+
+  while (!stop_requested && manager.getState()->running) {
+    int status;
+    pid_t dead_pid = waitpid(-1, &status, WNOHANG);
+
+    if (dead_pid > 0) {
+      spdlog::warn("[master] Child process PID {} terminated unexpectedly.",
+                   dead_pid);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 
-  spdlog::warn("[ipc manager] Shutdown signal received. Cleaning up.");
+  spdlog::warn("[master] Shutdown sequence initiated...");
+
+  manager.getState()->running = false;
+
+  for (pid_t pid : children_pids) {
+    kill(pid, SIGTERM);
+  }
+
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
+  spdlog::info("[master] Cleaning up IPC resources...");
+
   return 0;
 }

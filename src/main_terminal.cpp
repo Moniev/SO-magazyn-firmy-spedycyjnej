@@ -15,6 +15,7 @@
 #include "../include/terminal/TerminalManager.h"
 #include "spdlog/spdlog.h"
 #include <csignal>
+#include <unistd.h>
 
 Manager *global_manager = nullptr;
 
@@ -22,10 +23,11 @@ Manager *global_manager = nullptr;
  * @brief Signal handler to ensure session logout on Ctrl+C (SIGINT).
  */
 void signalHandler(int signal) {
-  if (signal == SIGINT && global_manager) {
-    spdlog::warn("\n[terminal manager] Caught SIGINT! Cleaning up session...");
-    global_manager->session_store->logout();
-    exit(0);
+  if (signal == SIGINT) {
+    const char *msg = "\n[terminal] Exiting...\n";
+    write(STDOUT_FILENO, msg, 22);
+
+    _exit(0);
   }
 }
 

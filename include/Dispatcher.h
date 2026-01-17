@@ -64,40 +64,48 @@ public:
     if (!belt || !shm)
       return;
 
-    bool dock_ready = false;
-    while (!dock_ready && shm->running) {
-      lock_dock_fn();
-      if (shm->dock_truck.is_present &&
-          shm->dock_truck.current_load < shm->dock_truck.max_load) {
-        dock_ready = true;
-        unlock_dock_fn();
-      } else {
-        if (shm->dock_truck.is_present)
-          send_signal_fn(SIGNAL_DEPARTURE);
-        unlock_dock_fn();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-    }
-
     Package pkg = belt->pop();
 
     if (pkg.id == 0)
       return;
 
-    lock_dock_fn();
-    if (shm->dock_truck.is_present &&
-        shm->dock_truck.current_load < shm->dock_truck.max_load) {
-      shm->dock_truck.current_load++;
-      shm->dock_truck.current_weight += pkg.weight;
+    bool package_loaded = false;
 
-      if (shm->dock_truck.current_load >= shm->dock_truck.max_load) {
-        send_signal_fn(SIGNAL_DEPARTURE);
+    while (!package_loaded && shm->running) {
+      lock_dock_fn();
+
+      TruckState &truck = shm->dock_truck;
+
+      if (truck.is_present) {
+        bool fits_qty = truck.current_load < truck.max_load;
+        bool fits_wgt = (truck.current_weight + pkg.weight) <= truck.max_weight;
+
+        if (fits_qty && fits_wgt) {
+          truck.current_load++;
+          truck.current_weight += pkg.weight;
+
+          spdlog::info(
+              "[dispatcher] [belt] Popped ID {} -> Truck #{}. Load: {}/{}",
+              pkg.id, truck.id, truck.current_load, truck.max_load);
+
+          package_loaded = true;
+
+          if (truck.current_load >= truck.max_load) {
+            send_signal_fn(SIGNAL_DEPARTURE);
+          }
+        } else {
+          if (truck.current_load >= truck.max_load) {
+            spdlog::debug("[dispatcher] Truck full, signalling departure.");
+            send_signal_fn(SIGNAL_DEPARTURE);
+          }
+        }
       }
-    } else {
-      spdlog::critical(
-          "[dispatcher] Race condition! Truck vanished after pop for Pkg {}",
-          pkg.id);
+
+      unlock_dock_fn();
+
+      if (!package_loaded) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      }
     }
-    unlock_dock_fn();
   }
 };

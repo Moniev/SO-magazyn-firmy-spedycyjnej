@@ -53,7 +53,10 @@ TEST_F(DispatcherTest, SuccessfulLoad) {
   m.lockDock();
   m.getState()->dock_truck.is_present = true;
   m.getState()->dock_truck.id = 101;
+
   m.getState()->dock_truck.max_load = 2;
+  m.getState()->dock_truck.max_weight = 100.0;
+
   m.getState()->dock_truck.current_load = 0;
   m.getState()->dock_truck.current_weight = 0.0;
   m.unlockDock();

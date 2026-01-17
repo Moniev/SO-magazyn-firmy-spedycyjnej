@@ -339,44 +339,26 @@ TEST_F(ManagerTest, BlockingSignal_EndWork) {
 }
 
 /**
- * @test Dispatcher_SuccessfulLoad
- * @brief End-to-end integration test for loading a package from the belt into a
- * present truck.
- */
-TEST_F(ManagerTest, Dispatcher_SuccessfulLoad) {
-  Manager m(true);
-  m.lockDock();
-  std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
-  m.getState()->dock_truck.is_present = true;
-  m.getState()->dock_truck.max_load = 5;
-  m.unlockDock();
-
-  Package p;
-  p.weight = 20.0;
-  m.belt->push(p);
-  m.dispatcher->processNextPackage();
-
-  m.lockDock();
-  EXPECT_EQ(m.getState()->dock_truck.current_load, 1);
-  EXPECT_DOUBLE_EQ(m.getState()->dock_truck.current_weight, 20.0);
-  m.unlockDock();
-}
-
-/**
  * @test Dispatcher_FullTruckTriggersDeparture
  * @brief Verifies that the Dispatcher automatically sends a departure signal
  * when the truck's capacity is reached.
  */
 TEST_F(ManagerTest, Dispatcher_FullTruckTriggersDeparture) {
   Manager m(true);
+
   m.lockDock();
   std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
+
   m.getState()->dock_truck.is_present = true;
   m.getState()->dock_truck.max_load = 1;
+  m.getState()->dock_truck.max_weight = 100.0;
+
   m.unlockDock();
 
   Package p;
+  p.weight = 10.0;
   m.belt->push(p);
+
   m.dispatcher->processNextPackage();
 
   SignalType sig = m.receiveSignalNonBlocking();

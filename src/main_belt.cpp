@@ -6,18 +6,24 @@
  * randomized weights and pushing them into the circular buffer.
  */
 
+#include "../include/Config.h"
 #include "../include/Manager.h"
 #include <chrono>
 #include <thread>
 
 int main() {
+  Config::get().setupLogger("system-belt");
+
+  int speed_ms = std::stoi(Config::get().getEnv("BELT_SPEED_MS", "2000"));
+  spdlog::info("[belt] Process started. Speed: {}ms", speed_ms);
+
   Manager manager(false);
 
   if (!manager.session_store->login("System-Belt", UserRole::Operator, 0, 1)) {
     return 1;
   }
 
-  spdlog::info("[belt] Started. Generating packages.");
+  spdlog::info("[belt] Logged in. Generating packages.");
 
   while (manager.getState()->running) {
     if (manager.session_store->trySpawnProcess()) {
@@ -28,7 +34,8 @@ int main() {
 
       manager.session_store->reportProcessFinished();
     }
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(speed_ms));
   }
 
   manager.session_store->logout();

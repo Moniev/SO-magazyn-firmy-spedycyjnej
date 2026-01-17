@@ -5,9 +5,12 @@
  * and then synchronize with the dock to perform the transfer.
  */
 
+#include "../include/Config.h"
 #include "../include/Manager.h"
 
 int main() {
+  Config::get().setupLogger("system-dispatcher");
+
   Manager manager(false);
 
   if (!manager.session_store->login("System-Dispatcher", UserRole::Operator, 0,

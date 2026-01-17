@@ -8,9 +8,17 @@
  * while workers are still running.
  */
 
+#include "../include/Config.h"
 #include "../include/Manager.h"
+#include <filesystem>
 
 int main() {
+  if (!std::filesystem::exists("logs")) {
+    std::filesystem::create_directory("logs");
+  }
+
+  Config::get().setupLogger("system-master");
+
   Manager manager(true);
 
   spdlog::info("[ipc manager] Warehouse System Initialized.");

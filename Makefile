@@ -5,6 +5,7 @@ DOCKER_DIR = docker
 Doxyfile   = Doxyfile
 SOURCES    := $(shell find src include test -name '*.cpp' -o -name '*.h')
 PACKAGE_NAME = warehouse-ipc-linux-x64.tar.gz
+CLANG_FORMAT := /usr/bin/clang-format
 
 export CC  = clang
 export CXX = clang++
@@ -94,12 +95,22 @@ docs:
 
 format:
 	@echo -e "$(CYAN)[info] Formatting code...$(RESET)"
-	@clang-format -i $(SOURCES)
+	@if [ -f "$(CLANG_FORMAT)" ]; then \
+		$(CLANG_FORMAT) -i $(SOURCES); \
+	else \
+		echo -e "$(RED)[error] Not found $(CLANG_FORMAT)"; \
+		exit 1; \
+	fi
 	@echo -e "$(GREEN)[success] Code formatted.$(RESET)"
 
 lint:
 	@echo -e "$(CYAN)[info] Checking code formatting...$(RESET)"
-	@clang-format --dry-run --Werror $(SOURCES)
+	@if [ -f "$(CLANG_FORMAT)" ]; then \
+		$(CLANG_FORMAT) --dry-run --Werror $(SOURCES); \
+	else \
+		echo -e "$(RED)[error] Not found $(CLANG_FORMAT).$(RESET)"; \
+		exit 1; \
+	fi
 	@echo -e "$(GREEN)[success] Code style is correct.$(RESET)"
 
 clean:

@@ -6,15 +6,20 @@
  * the standard conveyor belt sequence.
  */
 
+#include "../include/Config.h"
 #include "../include/Manager.h"
 
 int main() {
-  Manager manager(false);
+  Config::get().setupLogger("system-truck");
 
+  Manager manager(false);
   if (!manager.session_store->login("System-TruckPool", UserRole::Operator, 0,
                                     5)) {
+    spdlog::critical("[truck] Failed to login session.");
     return 1;
   }
+
+  spdlog::info("[truck] Truck driver ready. Entering run loop.");
 
   manager.truck->run();
 

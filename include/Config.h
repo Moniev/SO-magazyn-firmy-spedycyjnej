@@ -105,9 +105,7 @@ public:
 
       auto logger = std::make_shared<spdlog::logger>(proc_name, sinks.begin(),
                                                      sinks.end());
-
       logger->set_level(dispatchLogLevel(level_str));
-
       spdlog::set_default_logger(logger);
       spdlog::flush_on(spdlog::level::info);
 

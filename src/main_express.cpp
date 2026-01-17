@@ -5,10 +5,13 @@
  * and then synchronize with the dock to perform the transfer.
  */
 
+#include "../include/Config.h"
 #include "../include/Express.h"
 #include "../include/Manager.h"
 
 int main() {
+  Config::get().setupLogger("system-express");
+
   Manager manager(false);
 
   if (!manager.session_store->login("System-Express", UserRole::Operator, 0,
@@ -22,7 +25,7 @@ int main() {
       [&]() { manager.unlockBelt(); },
       [&](SignalType s) { manager.sendSignal(s); });
 
-  spdlog::info("[express] VIP Handler ready.");
+  spdlog::info("[express] VIP Handler ready. Waiting for signals...");
 
   while (manager.getState()->running) {
     SignalType sig = manager.receiveSignalBlocking();
@@ -30,6 +33,7 @@ int main() {
     if (sig == SIGNAL_EXPRESS_LOAD) {
       express.deliverVipPackage();
     } else if (sig == SIGNAL_END_WORK) {
+      spdlog::info("[express] End work signal received.");
       break;
     }
   }

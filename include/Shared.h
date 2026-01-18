@@ -53,7 +53,8 @@ constexpr int MAX_USERS_SESSIONS =
     5; /**< Maximum number of concurrent process sessions. */
 /** @} */
 
-/** @brief Type alias for Organization Identifier. */
+/** @brief Type alias for Organization Identifier. It was MEANT to be used but
+ * found no time for implementation of multiple organizations at once */
 using OrgId = int;
 
 /**

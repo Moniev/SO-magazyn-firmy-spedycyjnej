@@ -14,30 +14,32 @@
 int main() {
   Config::get().setupLogger("system-belt");
 
-  int speed_ms = std::stoi(Config::get().getEnv("BELT_SPEED_MS", "2000"));
-  spdlog::info("[belt] Process started. Speed: {}ms", speed_ms);
+  spdlog::info("[belt-proc] Process started. Initializing Belt Subsystem...");
 
   Manager manager(false);
 
   if (!manager.session_store->login("System-Belt", UserRole::Operator, 0, 1)) {
+    spdlog::error("[belt-proc] Login failed. Exiting.");
     return 1;
   }
 
-  spdlog::info("[belt] Logged in. Generating packages.");
+  spdlog::info(
+      "[belt-proc] Connected. Waiting for workers to start production...");
 
   while (manager.getState()->running) {
-    if (manager.session_store->trySpawnProcess()) {
-      Package p;
-      p.weight = 1.0 + (rand() % 100) / 10.0;
-
-      manager.belt->push(p);
-
-      manager.session_store->reportProcessFinished();
+    static int log_counter = 0;
+    if (++log_counter >= 5) {
+      int count = manager.belt->getCount();
+      int workers = manager.belt->getWorkerCount();
+      spdlog::info("[belt-proc] Status: {} items on belt, {} active workers.",
+                   count, workers);
+      log_counter = 0;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(speed_ms));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
+  spdlog::info("[belt-proc] System shutdown signal received.");
   manager.session_store->logout();
   return 0;
 }

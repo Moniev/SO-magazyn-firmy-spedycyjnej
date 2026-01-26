@@ -136,4 +136,6 @@ public:
   }
 
   int getCount() const { return shm ? shm->current_items_count : 0; }
+
+  int getWorkerCount() const { return shm ? shm->current_workers_count : 0; }
 };

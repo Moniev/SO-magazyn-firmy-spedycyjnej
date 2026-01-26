@@ -33,6 +33,78 @@ protected:
 };
 
 /**
+ * @test WorkerRegistrationLogic
+ * @brief Verifies that workers can be added up to the limit, but not beyond.
+ * * **Logic Check**:
+ * - Successfully increments the worker count up to `MAX_WORKERS_PER_BELT`.
+ * - Returns `false` and maintains the maximum count when attempting to add
+ * a worker beyond capacity.
+ */
+TEST_F(BeltTest, WorkerRegistrationLogic) {
+  Belt belt(&mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op);
+
+  for (int i = 0; i < MAX_WORKERS_PER_BELT; ++i) {
+    EXPECT_TRUE(belt.registerWorker())
+        << "Should verify adding worker " << i + 1;
+    EXPECT_EQ(mock_shared_memory.current_workers_count, i + 1);
+  }
+
+  EXPECT_FALSE(belt.registerWorker()) << "Should reject worker above capacity";
+  EXPECT_EQ(mock_shared_memory.current_workers_count, MAX_WORKERS_PER_BELT);
+}
+
+/**
+ * @test WorkerUnregistrationLogic
+ * @brief Verifies that workers can be removed, but count cannot go below zero.
+ * * **Logic Check**:
+ * - Decrements `current_workers_count` upon valid unregistration.
+ * - Prevents integer underflow by keeping the count at 0 if `unregisterWorker`
+ * is called when no workers are present.
+ */
+TEST_F(BeltTest, WorkerUnregistrationLogic) {
+  Belt belt(&mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op);
+
+  mock_shared_memory.current_workers_count = 2;
+
+  belt.unregisterWorker();
+  EXPECT_EQ(mock_shared_memory.current_workers_count, 1);
+
+  belt.unregisterWorker();
+  EXPECT_EQ(mock_shared_memory.current_workers_count, 0);
+
+  belt.unregisterWorker();
+  EXPECT_EQ(mock_shared_memory.current_workers_count, 0)
+      << "Count should not go negative";
+}
+
+/**
+ * @test StandardFlowWithWorkers
+ * @brief Full integration test ensuring standard operations work with active
+ * workers.
+ * * **Logic Check**:
+ * - Registers a worker to satisfy the logical dependency.
+ * - Pushes a package and verifies belt state (count/ID/weight).
+ * - Pops the package and verifies that the belt state is cleared correctly.
+ */
+TEST_F(BeltTest, StandardFlowWithWorkers) {
+  Belt belt(&mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op);
+
+  belt.registerWorker();
+
+  Package p1;
+  p1.weight = 10.0;
+  belt.push(p1);
+
+  EXPECT_EQ(mock_shared_memory.current_items_count, 1);
+  EXPECT_EQ(mock_shared_memory.belt[0].id, 1);
+
+  Package out = belt.pop();
+
+  EXPECT_EQ(out.id, 1);
+  EXPECT_EQ(mock_shared_memory.current_items_count, 0);
+}
+
+/**
  * @test PushUpdatesStateAndTail
  * @brief Verifies that adding a package correctly updates global metrics and
  * pointers.
@@ -92,7 +164,6 @@ TEST_F(BeltTest, PopReturnsCorrectDataAndUpdatesHead) {
  * - When the `tail` reaches the last index (`MAX_BELT_CAPACITY_K - 1`),
  * the next push must reset the `tail` to 0.
  */
-
 TEST_F(BeltTest, CircularLogicWrapAround) {
   Belt belt(&mock_shared_memory, no_op, no_op, no_op, no_op, no_op, no_op);
   int capacity = MAX_BELT_CAPACITY_K;

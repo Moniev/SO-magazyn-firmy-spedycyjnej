@@ -80,6 +80,15 @@ public:
     wait_empty_fn();
     lock_fn();
 
+    if (shm->current_items_count >= MAX_BELT_CAPACITY_K) {
+      spdlog::error("[belt] REJECTED: Belt full! Count: {}/{}",
+                    shm->current_items_count, MAX_BELT_CAPACITY_K);
+
+      unlock_fn();
+      signal_empty_fn();
+      return;
+    }
+
     shm->total_packages_created++;
     pkg.id = shm->total_packages_created;
 
@@ -103,6 +112,13 @@ public:
       return {};
     wait_full_fn();
     lock_fn();
+
+    if (shm->current_items_count <= 0) {
+      unlock_fn();
+      signal_full_fn();
+      return {};
+    }
+
     int current_head = shm->head;
     Package pkg = shm->belt[current_head];
     std::memset(&shm->belt[current_head], 0, sizeof(Package));

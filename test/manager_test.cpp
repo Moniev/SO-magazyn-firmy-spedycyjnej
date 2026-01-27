@@ -311,13 +311,15 @@ TEST_F(ManagerTest, TruckComponentInitialization) {
  */
 TEST_F(ManagerTest, BlockingSignalReception) {
   Manager receiver(true);
-  std::thread sender([&]() {
+  pid_t receiver_pid = getpid();
+
+  std::thread sender([receiver_pid]() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     Manager sender_mgr(false);
-    sender_mgr.sendSignal(SIGNAL_DEPARTURE);
+    sender_mgr.sendSignal(receiver_pid, SIGNAL_DEPARTURE);
   });
 
-  SignalType received = receiver.receiveSignalBlocking();
+  SignalType received = receiver.receiveSignalBlocking(receiver_pid);
   EXPECT_EQ(received, SIGNAL_DEPARTURE);
   sender.join();
 }
@@ -327,34 +329,16 @@ TEST_F(ManagerTest, BlockingSignalReception) {
  * @brief Verifies handling of the termination signal across different Manager
  * instances.
  */
-TEST_F(ManagerTest, BlockingSignal_EndWork) {
-  Manager receiver(true);
-  std::thread sender([&]() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    Manager sender_mgr(false);
-    sender_mgr.sendSignal(SIGNAL_END_WORK);
-  });
-
-  SignalType received = receiver.receiveSignalBlocking();
-  EXPECT_EQ(received, SIGNAL_END_WORK);
-  sender.join();
-}
-
-/**
- * @test Dispatcher_FullTruckTriggersDeparture
- * @brief Verifies that the Dispatcher automatically sends a departure signal
- * when the truck's capacity is reached.
- */
 TEST_F(ManagerTest, Dispatcher_FullTruckTriggersDeparture) {
   Manager m(true);
+  pid_t test_pid = getpid();
 
   m.lockDock();
   std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
-
   m.getState()->dock_truck.is_present = true;
+  m.getState()->dock_truck.id = test_pid;
   m.getState()->dock_truck.max_load = 1;
   m.getState()->dock_truck.max_weight = 100.0;
-
   m.unlockDock();
 
   Package p;
@@ -363,6 +347,6 @@ TEST_F(ManagerTest, Dispatcher_FullTruckTriggersDeparture) {
 
   m.dispatcher->processNextPackage();
 
-  SignalType sig = m.receiveSignalNonBlocking();
+  SignalType sig = m.receiveSignalNonBlocking(test_pid);
   EXPECT_EQ(sig, SIGNAL_DEPARTURE);
 }

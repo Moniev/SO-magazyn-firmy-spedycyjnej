@@ -142,7 +142,12 @@ public:
     sb.sem_op = op;
     sb.sem_flg = 0;
 
-    while (semop(sem_id, &sb, 1) == -1) {
+    if (semop(sem_id, &sb, 1) == -1) {
+      if (errno == EIDRM || errno == EINVAL) {
+        if (!shm->running)
+          return;
+      }
+
       if (errno != EINTR) {
         spdlog::critical("[ipc manager] semop failed: {}",
                          std::strerror(errno));

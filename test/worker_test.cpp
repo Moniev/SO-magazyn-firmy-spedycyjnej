@@ -1,7 +1,6 @@
 #include "../include/Belt.h"
 #include "../include/Manager.h"
 #include "../include/Worker.h"
-#include <atomic>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <thread>

@@ -72,40 +72,47 @@ int main() {
   }
 
   Config::get().setupLogger("system-master");
-  spdlog::info("[master] Starting Warehouse Orchestrator...");
+  spdlog::info(
+      "[master] Starting Warehouse Orchestrator with Fleet Support...");
 
   Manager manager(true);
 
-  spawnChild("./build/truck", "truck");
   spawnChild("./build/dispatcher", "dispatcher");
   spawnChild("./build/express", "express");
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
   spawnChild("./build/belt", "belt");
+
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+  int num_trucks = 3;
+  for (int i = 1; i <= num_trucks; ++i) {
+    spawnChild("./build/truck", "truck", std::to_string(i));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
 
   for (int i = 1; i <= 3; ++i) {
     spawnChild("./build/worker", "worker", std::to_string(i));
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
 
-  spdlog::info("[master] All systems operational. Press Ctrl+C to stop.");
+  spdlog::info(
+      "[master] Deployment complete. {} trucks in the pool. Monitoring...",
+      num_trucks);
 
   while (!stop_requested && manager.getState()->running) {
     int status;
     pid_t dead_pid = waitpid(-1, &status, WNOHANG);
 
     if (dead_pid > 0) {
-      spdlog::warn("[master] Child process PID {} terminated unexpectedly.",
-                   dead_pid);
+      spdlog::warn(
+          "[master] Process PID {} died. Check logs for stability issues.",
+          dead_pid);
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 
-  spdlog::warn("[master] Shutdown sequence initiated...");
-
+  spdlog::warn(
+      "[master] Shutdown signal received. Terminating all processes...");
   manager.getState()->running = false;
 
   for (pid_t pid : children_pids) {
@@ -113,8 +120,8 @@ int main() {
   }
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
-
-  spdlog::info("[master] Cleaning up IPC resources...");
+  spdlog::info(
+      "[master] IPC resources marked for destruction. System offline.");
 
   return 0;
 }

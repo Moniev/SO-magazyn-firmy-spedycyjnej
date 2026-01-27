@@ -2,19 +2,14 @@
  * @file TerminalAction.h
  * @brief Implementation of CLI command logic and security checks.
  */
+#pragma once
 
 #include "../Manager.h"
 #include "../Shared.h"
+#include "spdlog/spdlog.h"
 #include <iostream>
 #include <string>
 
-/**
- * @class TerminalActions
- * @brief Static container for command execution logic.
- * * Each method in this class corresponds to a specific user intent.
- * The methods verify if the current user session possesses the required
- * `UserRole` bitflags before dispatching signals via the Manager.
- */
 class TerminalActions {
 public:
   static void handleVip(Manager *manager, UserRole role) {
@@ -59,6 +54,8 @@ public:
       spdlog::critical("[cli] EMERGENCY STOP INITIATED BY ADMIN");
 
       SharedState *shm = manager->getState();
+      manager->getState()->running = false;
+
       for (int i = 0; i < MAX_USERS_SESSIONS; ++i) {
         if (shm->users[i].active) {
           manager->sendSignal(shm->users[i].session_pid, SIGNAL_END_WORK);

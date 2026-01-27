@@ -19,15 +19,21 @@ private:
   void randomizeTruckSpecs(TruckState &truck) {
     static std::random_device rd;
     static std::mt19937 gen(rd());
-    std::uniform_int_distribution<> load_dist(5, 12);
-    std::uniform_real_distribution<> weight_dist(50.0, 120.0);
+
+    std::uniform_real_distribution<> weight_cap_dist(200.0, 600.0);
+
+    std::uniform_real_distribution<> vol_cap_dist(1.0, 3.0);
 
     truck.id = my_pid;
 
     truck.current_load = 0;
     truck.current_weight = 0.0;
-    truck.max_load = load_dist(gen);
-    truck.max_weight = weight_dist(gen);
+    truck.current_volume = 0.0;
+
+    truck.max_load = 100;
+    truck.max_weight = weight_cap_dist(gen);
+    truck.max_volume = vol_cap_dist(gen);
+
     truck.is_present = true;
   }
 
@@ -53,8 +59,9 @@ public:
       }
 
       randomizeTruckSpecs(shm->dock_truck);
-      spdlog::info("[truck-{}] Docked successfully. Waiting for cargo.",
-                   my_pid);
+      spdlog::info(
+          "[truck-{}] Docked. Max W:{:.1f}kg, Max V:{:.3f}m3. Waiting.", my_pid,
+          shm->dock_truck.max_weight, shm->dock_truck.max_volume);
 
       unlock_dock_fn();
 
@@ -69,12 +76,13 @@ public:
       if (shm->dock_truck.id == my_pid) {
         shm->trucks_completed++;
         shm->dock_truck.is_present = false;
-        spdlog::info("[truck-{}] Departing full. Total dispatched: {}", my_pid,
-                     shm->trucks_completed);
+
+        spdlog::info("[truck-{}] Departing. Payload: {:.1f}kg / {:.3f}m3. "
+                     "Total dispatched: {}",
+                     my_pid, shm->dock_truck.current_weight,
+                     shm->dock_truck.current_volume, shm->trucks_completed);
       } else {
-        spdlog::critical(
-            "[truck-{}] ERROR: Identity theft at dock! Found ID {}", my_pid,
-            shm->dock_truck.id);
+        spdlog::critical("[truck-{}] ERROR: Identity theft at dock!", my_pid);
       }
 
       unlock_dock_fn();
@@ -84,6 +92,12 @@ public:
                    route_time);
       std::this_thread::sleep_for(std::chrono::milliseconds(route_time));
     }
+
+    lock_dock_fn();
+    if (shm->dock_truck.is_present && shm->dock_truck.id == my_pid) {
+      shm->dock_truck.is_present = false;
+    }
+    unlock_dock_fn();
 
     spdlog::info("[truck-{}] Shift ended.", my_pid);
   }

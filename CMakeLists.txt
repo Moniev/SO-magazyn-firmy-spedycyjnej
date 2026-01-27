@@ -66,7 +66,6 @@ foreach(BIN ${BINS})
 
   target_link_libraries(${BIN} PRIVATE
         spdlog::spdlog
-        nlohmann_json::nlohmann_json
         pthread
     )
 endforeach()

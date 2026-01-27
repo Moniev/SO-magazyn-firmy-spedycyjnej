@@ -14,43 +14,59 @@
 #include "../include/Manager.h"
 #include "../include/terminal/TerminalManager.h"
 #include "spdlog/spdlog.h"
+#include <atomic>
 #include <csignal>
 #include <unistd.h>
 
-Manager *global_manager = nullptr;
+std::atomic<bool> keep_running{true};
 
-/**
- * @brief Signal handler to ensure session logout on Ctrl+C (SIGINT).
- */
 void signalHandler(int signal) {
   if (signal == SIGINT) {
-    const char *msg = "\n[terminal] Exiting...\n";
-    write(STDOUT_FILENO, msg, 22);
-
-    _exit(0);
+    const char *msg = "\n[terminal] Shutdown signal received. Cleaning up...\n";
+    write(STDOUT_FILENO, msg, 51);
+    keep_running.store(false);
   }
 }
 
+struct AdminSessionGuard {
+  Manager &m;
+  AdminSessionGuard(Manager &manager) : m(manager) {
+    if (!m.session_store->login(
+            "AdminConsole", UserRole::Operator | UserRole::SysAdmin, 1, 1)) {
+      throw std::runtime_error(
+          "Authentication failed: Slot occupied or Master system offline.");
+    }
+    spdlog::info("[terminal] Admin access granted. Command link established.");
+  }
+  ~AdminSessionGuard() {
+    m.session_store->logout();
+    spdlog::info("[terminal] Admin session purged from SHM.");
+  }
+};
+
 int main() {
-  Manager manager(false);
-  global_manager = &manager;
+  try {
+    Manager manager(false);
 
-  std::signal(SIGINT, signalHandler);
+    std::signal(SIGINT, signalHandler);
 
-  if (!manager.session_store->login(
-          "AdminConsole", UserRole::Operator | UserRole::SysAdmin, 1, 1)) {
-    spdlog::critical("[terminal manager] Authentication failed. User already "
-                     "logged in or system down.");
-    return 1;
+    AdminSessionGuard session(manager);
+    TerminalManager terminal(&manager);
+    spdlog::info(
+        "[terminal] Console ready. Type 'help' for commands. Ctrl+C to exit.");
+
+    while (keep_running.load() && manager.getState()->running) {
+      terminal.runOnce();
+
+      if (!keep_running.load())
+        break;
+    }
+
+  } catch (const std::exception &e) {
+    spdlog::critical("[terminal] System error: {}", e.what());
+    return EXIT_FAILURE;
   }
 
-  TerminalManager terminal(&manager);
-  spdlog::info("[terminal manager] VIP Handler ready. Press Ctrl+C to exit.");
-
-  terminal.run();
-
-  manager.session_store->logout();
-  spdlog::info("[terminal manager] Console session closed.");
-
-  return 0;
+  spdlog::info("[terminal] Terminal process finished cleanly.");
+  return EXIT_SUCCESS;
 }

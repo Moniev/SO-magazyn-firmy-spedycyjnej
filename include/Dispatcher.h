@@ -15,97 +15,86 @@
 /**
  * @class Dispatcher
  * @brief Acts as the bridge between the Conveyor Belt and the Trucking system.
- * * The Dispatcher is a consumer process that pops packages from the Belt's
- * circular buffer and attempts to load them into the truck currently stationed
- * at the dock. It handles synchronization between these two distinct
- * sub-systems (Belt IPC and Dock IPC).
+ * * The Dispatcher operates in a continuous loop:
+ * 1. Pops a package from the Belt (blocking).
+ * 2. Waits for a valid Truck to be present at the Dock.
+ * 3. Loads the package.
+ * 4. Signals departure if the truck is full.
  */
 class Dispatcher {
 private:
-  Belt *belt;       /**< Pointer to the Belt manager for popping data. */
-  SharedState *shm; /**< Pointer to the shared state for dock updates. */
+  Belt *belt;       /**< Pointer to the Belt manager. */
+  SharedState *shm; /**< Pointer to shared memory. */
 
   std::function<void()> lock_dock_fn;   /**< Locks the dock mutex. */
   std::function<void()> unlock_dock_fn; /**< Unlocks the dock mutex. */
   std::function<void(SignalType)>
-      send_signal_fn; /**< Dispatches IPC signals (e.g., DEPARTURE). */
+      send_signal_fn; /**< Dispatches IPC signals. */
 
 public:
-  /**
-   * @brief Constructs a Dispatcher with necessary IPC hooks.
-   * @param b Pointer to an initialized Belt instance.
-   * @param s Pointer to the SharedState structure.
-   * @param lock_dock Mutex lock for the dock critical section.
-   * @param unlock_dock Mutex unlock for the dock critical section.
-   * @param send_signal Signal dispatching hook (via Message Queue).
-   */
   Dispatcher(Belt *b, SharedState *s, std::function<void()> lock_dock,
              std::function<void()> unlock_dock,
              std::function<void(SignalType)> send_signal)
       : belt(b), shm(s), lock_dock_fn(lock_dock), unlock_dock_fn(unlock_dock),
         send_signal_fn(send_signal) {}
 
-  /**
-   * @brief Orchestrates the transfer of a single package.
-   * * This method implements a retry loop to ensure that once a package is
-   * popped from the belt, it is eventually loaded.
-   * * @process_flow
-   * 1. Blocks on Belt::pop() until a package is available.
-   * 2. Acquires the Dock Mutex.
-   * 3. Checks if a truck is present and has capacity.
-   * 4. Updates truck metrics (count and weight).
-   * 5. If capacity is reached, triggers a SIGNAL_DEPARTURE.
-   * 6. Releases Dock Mutex.
-   * * @note If no truck is present or the truck is full, the method waits
-   * and retries, ensuring no package data is lost after being removed from the
-   * belt.
-   */
-  void processNextPackage() {
-    if (!belt || !shm)
-      return;
+  void run() {
+    spdlog::info("[dispatcher] Service started. Waiting for packages...");
 
-    Package pkg = belt->pop();
+    while (shm && shm->running) {
+      Package pkg = belt->pop();
 
-    if (pkg.id == 0)
-      return;
+      if (pkg.id == 0) {
+        if (!shm->running)
+          break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
 
-    bool package_loaded = false;
+      bool loaded = false;
+      while (!loaded && shm->running) {
+        lock_dock_fn();
+        TruckState &truck = shm->dock_truck;
 
-    while (!package_loaded && shm->running) {
-      lock_dock_fn();
+        if (truck.is_present) {
+          bool fits_qty = truck.current_load < truck.max_load;
+          bool fits_wgt =
+              (truck.current_weight + pkg.weight) <= truck.max_weight;
 
-      TruckState &truck = shm->dock_truck;
+          if (fits_qty && fits_wgt) {
+            truck.current_load++;
+            truck.current_weight += pkg.weight;
+            loaded = true;
 
-      if (truck.is_present) {
-        bool fits_qty = truck.current_load < truck.max_load;
-        bool fits_wgt = (truck.current_weight + pkg.weight) <= truck.max_weight;
+            spdlog::info("[dispatcher] Loaded Pkg {} -> Truck #{}. Load: {}/{} "
+                         "({:.1f}kg)",
+                         pkg.id, truck.id, truck.current_load, truck.max_load,
+                         truck.current_weight);
 
-        if (fits_qty && fits_wgt) {
-          truck.current_load++;
-          truck.current_weight += pkg.weight;
-
-          spdlog::info(
-              "[dispatcher] [belt] Popped ID {} -> Truck #{}. Load: {}/{}",
-              pkg.id, truck.id, truck.current_load, truck.max_load);
-
-          package_loaded = true;
-
-          if (truck.current_load >= truck.max_load) {
-            send_signal_fn(SIGNAL_DEPARTURE);
-          }
-        } else {
-          if (truck.current_load >= truck.max_load) {
-            spdlog::debug("[dispatcher] Truck full, signalling departure.");
-            send_signal_fn(SIGNAL_DEPARTURE);
+            if (truck.current_load >= truck.max_load ||
+                truck.current_weight >= truck.max_weight) {
+              spdlog::info("[dispatcher] Truck #{} full. Signalling departure.",
+                           truck.id);
+              send_signal_fn(SIGNAL_DEPARTURE);
+            }
+          } else {
+            if (truck.current_load > 0) {
+              spdlog::warn("[dispatcher] Pkg {} doesn't fit in Truck #{}. "
+                           "Requesting new truck.",
+                           pkg.id, truck.id);
+              send_signal_fn(SIGNAL_DEPARTURE);
+            }
           }
         }
-      }
 
-      unlock_dock_fn();
+        unlock_dock_fn();
 
-      if (!package_loaded) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (!loaded) {
+          spdlog::debug("[dispatcher] Waiting for available truck...");
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
       }
     }
+    spdlog::info("[dispatcher] Service stopped.");
   }
 };

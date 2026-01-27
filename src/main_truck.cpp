@@ -5,24 +5,53 @@
  * VIP signal is intercepted, it executes a direct-to-truck load, bypassing
  * the standard conveyor belt sequence.
  */
-
 #include "../include/Config.h"
 #include "../include/Manager.h"
+#include <atomic>
+#include <csignal>
+
+std::atomic<bool> truck_stop{false};
+
+void signalHandler(int signum) {
+  spdlog::warn("[truck] Signal ({}) received. Driver finishing the shift...",
+               signum);
+  truck_stop.store(true);
+}
+
+struct TruckSessionGuard {
+  Manager &m;
+  TruckSessionGuard(Manager &manager) : m(manager) {
+    if (!m.session_store->login("System-TruckPool", UserRole::Operator, 0, 5)) {
+      throw std::runtime_error(
+          "TruckPool login failed. All docking bays occupied?");
+    }
+    spdlog::info("[truck] Driver logged in. Docking permission granted.");
+  }
+  ~TruckSessionGuard() {
+    m.session_store->logout();
+    spdlog::info("[truck] Driver logged out. Bay cleared.");
+  }
+};
 
 int main() {
-  Config::get().setupLogger("system-truck");
+  try {
+    Config::get().setupLogger("system-truck");
 
-  Manager manager(false);
-  if (!manager.session_store->login("System-TruckPool", UserRole::Operator, 0,
-                                    5)) {
-    spdlog::critical("[truck] Failed to login session.");
-    return 1;
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
+    Manager manager(false);
+    TruckSessionGuard session(manager);
+
+    spdlog::info("[truck] Truck process online. Heading to the dock...");
+
+    manager.truck->run();
+
+  } catch (const std::exception &e) {
+    spdlog::critical("[truck] Critical Driver Error: {}", e.what());
+    return EXIT_FAILURE;
   }
 
-  spdlog::info("[truck] Truck driver ready. Entering run loop.");
-
-  manager.truck->run();
-
-  manager.session_store->logout();
-  return 0;
+  spdlog::info("[truck] Process finished cleanly. Iron Within.");
+  return EXIT_SUCCESS;
 }

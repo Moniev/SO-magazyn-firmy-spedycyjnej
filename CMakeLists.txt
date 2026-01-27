@@ -35,13 +35,6 @@ if (DOXYGEN_FOUND)
         VERBATIM)
 endif()
 
-message(STATUS "Downloading nlohmann/json")
-FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
-
 message(STATUS "Downloading spdlog")
 FetchContent_Declare(
     spdlog
@@ -63,7 +56,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/logs)
 
 message(STATUS "Adding executables")
-set(BINS main dispatcher belt express truck terminal)
+set(BINS main dispatcher belt express truck terminal worker)
 foreach(BIN ${BINS})
   if(${BIN} STREQUAL "main")
     add_executable(${BIN} src/main.cpp)
@@ -84,7 +77,7 @@ enable_testing()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
 
 add_executable(unit_tests ${TEST_SOURCES})
-target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog nlohmann_json::nlohmann_json)
+target_link_libraries(unit_tests PRIVATE GTest::gtest_main spdlog::spdlog)
 gtest_discover_tests(unit_tests)
 
 message(STATUS "Build configurated")

@@ -104,11 +104,13 @@ TEST_F(ManagerTest, SharedMemorySync) {
 TEST_F(ManagerTest, MessageQueueCommunication) {
   Manager owner(true);
   Manager client(false);
+  pid_t my_pid = getpid();
 
-  EXPECT_EQ(client.receiveSignalNonBlocking(), SIGNAL_NONE);
-  owner.sendSignal(SIGNAL_DEPARTURE);
+  EXPECT_EQ(client.receiveSignalNonBlocking(my_pid), SIGNAL_NONE);
 
-  SignalType received_signal = client.receiveSignalNonBlocking();
+  owner.sendSignal(my_pid, SIGNAL_DEPARTURE);
+
+  SignalType received_signal = client.receiveSignalNonBlocking(my_pid);
   EXPECT_EQ(received_signal, SIGNAL_DEPARTURE);
 }
 

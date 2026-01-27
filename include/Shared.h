@@ -29,11 +29,15 @@ constexpr double MAX_BELT_WEIGHT_M =
 /** @} */
 
 /** @name Package Volume Constants
- * Standardized volumes for different package types.
+ * Standardized volumes converted to cubic meters (m3).
+ * Calculation: (cm * cm * cm) / 1,000,000
+ * A: 64x38x8  = 19456 cm3 = 0.019456 m3
+ * B: 64x38x19 = 46208 cm3 = 0.046208 m3
+ * C: 64x38x41 = 99712 cm3 = 0.099712 m3
  * @{ */
-constexpr double VOL_A = 19.5; /**< Standard volume for Type A packages. */
-constexpr double VOL_B = 46.2; /**< Standard volume for Type B packages. */
-constexpr double VOL_C = 99.7; /**< Standard volume for Type C packages. */
+constexpr double VOL_A = 0.019456;
+constexpr double VOL_B = 0.046208;
+constexpr double VOL_C = 0.099712;
 /** @} */
 
 /** @name IPC Identification Keys
@@ -51,7 +55,7 @@ constexpr int MSG_KEY_ID = 9012; /**< Key for Message Queue allocation. */
 constexpr int MAX_PACKAGE_HISTORY =
     6; /**< Maximum number of audit entries per package. */
 constexpr int MAX_USERS_SESSIONS =
-    5; /**< Maximum number of concurrent process sessions. */
+    8; /**< Maximum number of concurrent process sessions. */
 /** @} */
 
 /** @brief Type alias for Organization Identifier. It was MEANT to be used but
@@ -308,8 +312,10 @@ struct TruckState {
   int id;                /**< Unique Truck ID. */
   int current_load;      /**< Number of packages currently loaded. */
   int max_load;          /**< Maximum package capacity. */
+  double current_volume; /**< Current volume */
   double current_weight; /**< Current total weight loaded. */
   double max_weight;     /**< Maximum weight capacity. */
+  double max_volume;     /**< Maximum volume of the truck */
 };
 
 /**

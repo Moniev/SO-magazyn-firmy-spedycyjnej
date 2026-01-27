@@ -5,41 +5,74 @@
  * via the SessionManager. It operates in a loop, creating new packages with
  * randomized weights and pushing them into the circular buffer.
  */
-
 #include "../include/Config.h"
 #include "../include/Manager.h"
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <thread>
 
-int main() {
-  Config::get().setupLogger("system-belt");
+std::atomic<bool> stop_flag{false};
 
-  spdlog::info("[belt-proc] Process started. Initializing Belt Subsystem...");
+void signalHandler(int signum) {
+  spdlog::warn("[belt-proc] Signal ({}) received. Safe shutdown initiated.",
+               signum);
+  stop_flag.store(true);
+}
 
-  Manager manager(false);
-
-  if (!manager.session_store->login("System-Belt", UserRole::Operator, 0, 1)) {
-    spdlog::error("[belt-proc] Login failed. Exiting.");
-    return 1;
+struct BeltSessionGuard {
+  Manager &m;
+  BeltSessionGuard(Manager &manager) : m(manager) {
+    if (!m.session_store->login("System-Belt", UserRole::Operator, 0, 1)) {
+      throw std::runtime_error("Belt Subsystem Login failed. Registry full?");
+    }
+    spdlog::info("[belt-proc] Session authenticated. Monitoring active.");
   }
+  ~BeltSessionGuard() {
+    m.session_store->logout();
+    spdlog::info("[belt-proc] Belt Session cleared from SHM.");
+  }
+};
 
-  spdlog::info(
-      "[belt-proc] Connected. Waiting for workers to start production...");
+int main() {
+  try {
+    Config::get().setupLogger("system-belt");
 
-  while (manager.getState()->running) {
-    static int log_counter = 0;
-    if (++log_counter >= 5) {
-      int count = manager.belt->getCount();
-      int workers = manager.belt->getWorkerCount();
-      spdlog::info("[belt-proc] Status: {} items on belt, {} active workers.",
-                   count, workers);
-      log_counter = 0;
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
+    Manager manager(false);
+    BeltSessionGuard session(manager);
+
+    spdlog::info("[belt-proc] Connected to IPC. Observing buffer metrics...");
+
+    int log_counter = 0;
+
+    while (!stop_flag.load() && manager.getState()->running) {
+
+      if (++log_counter >= 5) {
+        int count = manager.belt->getCount();
+        int workers = manager.belt->getWorkerCount();
+
+        spdlog::info(
+            "[belt-proc] Status: {:02d} items on belt | {:02d} active workers.",
+            count, workers);
+        log_counter = 0;
+      }
+
+      for (int i = 0; i < 10; ++i) {
+        if (stop_flag.load() || !manager.getState()->running)
+          break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
     }
 
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    spdlog::info("[belt-proc] Monitoring finished. Relinquishing control.");
+
+  } catch (const std::exception &e) {
+    spdlog::critical("[belt-proc] Fatal Exception: {}", e.what());
+    return EXIT_FAILURE;
   }
 
-  spdlog::info("[belt-proc] System shutdown signal received.");
-  manager.session_store->logout();
-  return 0;
+  return EXIT_SUCCESS;
 }

@@ -1,29 +1,47 @@
 /**
  * @file dispatcher_main.cpp
- * @brief Consumer process that routes packages from the belt to the truck.
- * * Uses the Dispatcher component to block on the belt (waiting for items)
- * and then synchronize with the dock to perform the transfer.
+ * @brief Dispatcher consumer process.
+ * Uses existing SessionManager with RAII safety wrapper.
  */
 
 #include "../include/Config.h"
 #include "../include/Manager.h"
 
+class DispatcherSession {
+  Manager &m;
+
+public:
+  DispatcherSession(Manager &manager) : m(manager) {
+    if (!m.session_store->login("System-Dispatcher", UserRole::Operator, 0,
+                                1)) {
+      throw std::runtime_error(
+          "Critical: Could not log in to Warehouse System.");
+    }
+    spdlog::info("[dispatcher] Session authenticated successfully.");
+  }
+
+  ~DispatcherSession() {
+    m.session_store->logout();
+    spdlog::info("[dispatcher] Emergency/Standard Logout executed.");
+  }
+};
+
 int main() {
-  Config::get().setupLogger("system-dispatcher");
+  try {
+    Config::get().setupLogger("system-dispatcher");
 
-  Manager manager(false);
+    Manager manager(false);
+    DispatcherSession session(manager);
 
-  if (!manager.session_store->login("System-Dispatcher", UserRole::Operator, 0,
-                                    1)) {
-    return 1;
+    spdlog::info("[dispatcher] Ready to route packages. Entering main loop.");
+
+    manager.dispatcher->run();
+
+  } catch (const std::exception &e) {
+    spdlog::critical("[dispatcher] Process terminated by exception: {}",
+                     e.what());
+    return EXIT_FAILURE;
   }
 
-  spdlog::info("[dispatcher] Ready to route packages.");
-
-  while (manager.getState()->running) {
-    manager.dispatcher->processNextPackage();
-  }
-
-  manager.session_store->logout();
-  return 0;
+  return EXIT_SUCCESS;
 }

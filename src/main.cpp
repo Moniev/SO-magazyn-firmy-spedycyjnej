@@ -25,11 +25,12 @@ void handleSigint(int) { stop_requested = 1; }
 
 /**
  * @brief Spawns a child process using fork/exec pattern.
- * @param binary_path Relative or absolute path to the executable (e.g.
- * "./build/belt").
- * @param proc_name Name of the process (passed as argv[0]).
+ * @param binary_path Relative or absolute path to the executable.
+ * @param proc_name Name of the process (argv[0]).
+ * @param arg Optional argument (argv[1]), e.g., Worker ID. Default is empty.
  */
-void spawnChild(const std::string &binary_path, const std::string &proc_name) {
+void spawnChild(const std::string &binary_path, const std::string &proc_name,
+                const std::string &arg = "") {
   pid_t pid = fork();
 
   if (pid < 0) {
@@ -38,9 +39,14 @@ void spawnChild(const std::string &binary_path, const std::string &proc_name) {
   }
 
   if (pid == 0) {
-
     std::vector<char *> args;
+
     args.push_back(const_cast<char *>(proc_name.c_str()));
+
+    if (!arg.empty()) {
+      args.push_back(const_cast<char *>(arg.c_str()));
+    }
+
     args.push_back(nullptr);
 
     execv(binary_path.c_str(), args.data());
@@ -48,7 +54,12 @@ void spawnChild(const std::string &binary_path, const std::string &proc_name) {
     perror("execv failed");
     exit(1);
   } else {
-    spdlog::info("[master] Spawned {} (PID: {})", proc_name, pid);
+    if (arg.empty()) {
+      spdlog::info("[master] Spawned {} (PID: {})", proc_name, pid);
+    } else {
+      spdlog::info("[master] Spawned {} with ID {} (PID: {})", proc_name, arg,
+                   pid);
+    }
     children_pids.push_back(pid);
   }
 }
@@ -72,6 +83,12 @@ int main() {
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   spawnChild("./build/belt", "belt");
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+  for (int i = 1; i <= 3; ++i) {
+    spawnChild("./build/worker", "worker", std::to_string(i));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
 
   spdlog::info("[master] All systems operational. Press Ctrl+C to stop.");
 

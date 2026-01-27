@@ -11,7 +11,10 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <poll.h>
 #include <string>
+
+extern std::atomic<bool> keep_running;
 
 /**
  * @class TerminalManager
@@ -24,6 +27,7 @@ class TerminalManager {
 private:
   Manager *manager; /**< Pointer to the central IPC Manager. */
   bool active;      /**< Loop control flag. */
+  bool header_printed = false;
 
   /**
    * @brief Retrieves the active session for the current process.
@@ -93,54 +97,64 @@ public:
    * and delegates to TerminalActions.
    * * Terminates when 'exit' is typed or 'stop' (if admin) is executed.
    */
-  void run() {
-    if (manager->session_store->getSessionIndex() == -1) {
-      std::cerr << "Terminal error: Not logged in via SessionManager!\n";
-      return;
+  void runOnce() {
+    if (!header_printed) {
+      printHeader();
+      header_printed = true;
+      printPrompt();
     }
 
-    spdlog::info("[cli] Running operator interface");
-    printHeader();
+    struct pollfd fds;
+    fds.fd = STDIN_FILENO;
+    fds.events = POLLIN;
 
-    std::string commandInput;
-    printPrompt();
+    int ret = poll(&fds, 1, 100);
 
-    while (active && std::cin >> commandInput) {
-      std::transform(commandInput.begin(), commandInput.end(),
-                     commandInput.begin(), ::tolower);
+    if (ret > 0 && (fds.revents & POLLIN)) {
+      std::string line;
+      if (!std::getline(std::cin, line) || line == "exit" || line == "quit") {
+        keep_running.store(false);
+        return;
+      }
 
+      if (line.empty()) {
+        printPrompt();
+        return;
+      }
+
+      std::transform(line.begin(), line.end(), line.begin(), ::tolower);
+      CliCommand cmd = CommandResolver::resolve(line);
       UserRole myRole = manager->session_store->getCurrentRole();
-      CliCommand cmd = CommandResolver::resolve(commandInput);
 
       switch (cmd) {
       case CliCommand::Vip:
         TerminalActions::handleVip(manager, myRole);
         break;
-
       case CliCommand::Depart:
         TerminalActions::handleDepart(manager, myRole);
         break;
-
       case CliCommand::Stop:
+        // Stop ustawia active na false, co przerywa pętlę
         TerminalActions::handleStop(manager, myRole, active);
         break;
-
       case CliCommand::Help:
         printHeader();
         break;
-
       case CliCommand::Exit:
         active = false;
         break;
-
-      case CliCommand::Unknown:
       default:
         std::cout << "  └─ Unknown command.\n";
         break;
       }
 
-      if (active)
+      if (!active) {
+        keep_running.store(false);
+      }
+
+      if (keep_running.load()) {
         printPrompt();
+      }
     }
   }
 };

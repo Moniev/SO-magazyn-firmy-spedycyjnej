@@ -41,9 +41,10 @@ protected:
    * * Dequeues the next signal from `signal_scenario`. If empty, returns
    * `SIGNAL_END_WORK` to force the loop to terminate safely.
    */
-  std::function<SignalType()> mock_wait = [this]() {
+  std::function<SignalType(pid_t)> mock_wait = [this](pid_t) {
     if (signal_scenario.empty())
       return SIGNAL_END_WORK;
+
     SignalType s = signal_scenario.front();
     signal_scenario.pop();
     return s;

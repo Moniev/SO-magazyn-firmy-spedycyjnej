@@ -40,6 +40,7 @@ protected:
       0; /**< Total number of signals dispatched via the mock queue. */
   SignalType last_signal =
       SIGNAL_NONE; /**< Captures the last SignalType sent for inspection. */
+  pid_t last_target_pid = 0; /**< Captures the pid of last signal */
   /** @} */
 
   /** @brief Mock implementation of the Dock lock; increments the local tracker.
@@ -60,8 +61,10 @@ protected:
    * Captures the signal type into last_signal for verification in ASSERT/EXPECT
    * macros.
    */
-  std::function<void(SignalType)> mock_signal = [this](SignalType s) {
+  std::function<void(pid_t, SignalType)> mock_signal = [this](pid_t p,
+                                                              SignalType s) {
     signals_sent++;
+    last_target_pid = p;
     last_signal = s;
   };
 

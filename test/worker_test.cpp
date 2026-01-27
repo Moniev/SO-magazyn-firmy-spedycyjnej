@@ -1,8 +1,3 @@
-/**
- * @file worker_test.cpp
- * @brief Unit and Integration tests for the Worker class.
- */
-
 #include "../include/Belt.h"
 #include "../include/Manager.h"
 #include "../include/Worker.h"

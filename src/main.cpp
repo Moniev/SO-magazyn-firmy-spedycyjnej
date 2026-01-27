@@ -5,7 +5,6 @@
  * * Spawns worker processes using fork() and execv().
  * * Monitors child processes and handles clean shutdown (SIGINT).
  */
-
 #include "../include/Config.h"
 #include "../include/Manager.h"
 #include <csignal>
@@ -70,6 +69,8 @@ int main() {
   if (!std::filesystem::exists("logs")) {
     std::filesystem::create_directory("logs");
   }
+
+  std::remove("logs/simulation_report.txt");
 
   Config::get().setupLogger("system-master");
   spdlog::info(

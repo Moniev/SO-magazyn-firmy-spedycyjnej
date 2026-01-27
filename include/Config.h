@@ -77,8 +77,8 @@ public:
    * - LOG_TO_FILE: "true"/"false" (default: false)
    * - LOG_LEVEL: "trace"..."off" (default: info)
    *
-   * * Creates a combined logger that can write to multiple sinks
-   * simultaneously.
+   * * Creates a combined logger that can write to one file simultaneusly.
+   *
    * * Sets the global default logger for the application.
    *
    * @param proc_name The name of the process (used for the log filename, e.g.,
@@ -86,7 +86,7 @@ public:
    */
   void setupLogger(const std::string &proc_name) {
     bool to_console = getEnv("LOG_TO_CONSOLE", "true") == "true";
-    bool to_file = getEnv("LOG_TO_FILE", "false") == "true";
+    bool to_file = getEnv("LOG_TO_FILE", "true") == "true";
     std::string level_str = getEnv("LOG_LEVEL", "info");
 
     try {
@@ -98,13 +98,15 @@ public:
       }
 
       if (to_file) {
-        std::string log_path = "logs/" + proc_name + ".log";
+        std::string log_path = "logs/simulation_report.txt";
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-            log_path, true));
+            log_path, false));
       }
 
       auto logger = std::make_shared<spdlog::logger>(proc_name, sinks.begin(),
                                                      sinks.end());
+
+      logger->set_pattern("[%H:%M:%S.%e] [%n] [%^%l%$] %v");
       logger->set_level(dispatchLogLevel(level_str));
       spdlog::set_default_logger(logger);
       spdlog::flush_on(spdlog::level::info);

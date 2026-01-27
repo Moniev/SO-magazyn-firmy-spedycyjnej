@@ -1,36 +1,26 @@
-/**
- * @file dispatcher_main.cpp
- * @brief Consumer process that routes packages from the belt to the truck.
- * * Uses the Dispatcher component to block on the belt (waiting for items)
- * and then synchronize with the dock to perform the transfer.
- */
 #include "../include/Config.h"
-#include "../include/Express.h"
 #include "../include/Manager.h"
 #include <atomic>
 #include <csignal>
+#include <iostream>
 
-std::atomic<bool> stop_flag{false};
+std::atomic<bool> stop_requested{false};
 
-void signalHandler(int signum) {
-  spdlog::warn(
-      "[express-proc] Signal ({}) received. Shutting down gracefully...",
-      signum);
-  stop_flag.store(true);
-}
+void signalHandler(int signum) { stop_requested.store(true); }
 
-struct ExpressSessionGuard {
+struct P4SessionGuard {
   Manager &m;
-  ExpressSessionGuard(Manager &manager) : m(manager) {
+  P4SessionGuard(Manager &manager) : m(manager) {
     if (!m.session_store->login("System-Express", UserRole::Operator, 0, 1)) {
       throw std::runtime_error(
-          "VIP Login failed - Unauthorized access to Express Service.");
+          "P4 Login failed. Is Express process already running?");
     }
-    spdlog::info("[express-proc] VIP Session authenticated.");
+    spdlog::info("[express-proc] P4 Worker logged in and ready.");
   }
-  ~ExpressSessionGuard() {
+
+  ~P4SessionGuard() {
     m.session_store->logout();
-    spdlog::info("[express-proc] VIP Session closed safely.");
+    spdlog::info("[express-proc] P4 Worker logged out.");
   }
 };
 
@@ -42,33 +32,34 @@ int main() {
     std::signal(SIGTERM, signalHandler);
 
     Manager manager(false);
+    P4SessionGuard session(manager);
 
-    ExpressSessionGuard session(manager);
+    spdlog::info("[express-proc] P4 Standing by. Waiting for Signal 2 (Express "
+                 "Load)...");
 
-    std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<> sleep_dist(5000, 10000);
+    pid_t my_pid = getpid();
 
-    spdlog::info(
-        "[express-proc] VIP Service online. Awaiting priority packages...");
+    while (!stop_requested.load() && manager.getState()->running) {
+      SignalType sig = manager.receiveSignalBlocking(my_pid);
 
-    while (!stop_flag.load() && manager.getState()->running) {
+      if (sig == SIGNAL_EXPRESS_LOAD) {
+        spdlog::info(
+            "[express-proc] Signal 2 Received! Starting batch delivery.");
 
-      int sleep_total_ms = sleep_dist(gen);
-      int slept_ms = 0;
+        manager.express->deliverExpressBatch();
 
-      while (slept_ms < sleep_total_ms && !stop_flag.load() &&
-             manager.getState()->running) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        slept_ms += 100;
-      }
-
-      if (!stop_flag.load() && manager.getState()->running) {
-        manager.express->deliverVipPackage();
+        spdlog::info(
+            "[express-proc] Batch delivery finished. Returning to standby.");
+      } else if (sig == SIGNAL_END_WORK) {
+        spdlog::info(
+            "[express-proc] Signal 3 (End Work) received. Shutting down.");
+        break;
+      } else if (sig == SIGNAL_DEPARTURE) {
       }
     }
 
   } catch (const std::exception &e) {
-    spdlog::critical("[express-proc] VIP System Failure: {}", e.what());
+    spdlog::critical("[express-proc] Critical Error: {}", e.what());
     return EXIT_FAILURE;
   }
 

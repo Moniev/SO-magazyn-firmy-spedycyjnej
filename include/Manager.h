@@ -112,7 +112,6 @@ public:
 
     express = std::make_unique<Express>(
         shm, [this]() { this->lockDock(); }, [this]() { this->unlockDock(); },
-        [this]() { this->lockBelt(); }, [this]() { this->unlockBelt(); },
         [this](pid_t target, SignalType s) { this->sendSignal(target, s); });
 
     dispatcher = std::make_unique<Dispatcher>(

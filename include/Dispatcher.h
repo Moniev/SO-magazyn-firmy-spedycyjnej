@@ -1,3 +1,12 @@
+/**
+ * @file Dispatcher.h
+ * @brief Defines the Dispatcher agent responsible for belt-to-truck transfers.
+ *
+ * This file contains the logic for the Dispatcher process. The Dispatcher acts
+ * as the **Consumer** of the Conveyor Belt and the **Loader** for the Docking
+ * Bay. It enforces physical constraints (Weight, Volume) and orchestrates truck
+ * departures.
+ */
 #pragma once
 
 #include "Belt.h"
@@ -7,22 +16,72 @@
 #include <functional>
 #include <thread>
 
+/**
+ * @class Dispatcher
+ * @brief Manages the transfer of packages from the internal belt to external
+ * transport.
+ *
+ * The Dispatcher operates as a bridge between the warehouse internals and the
+ * logistics fleet. Its primary responsibilities are:
+ * 1. **De-queueing:** Removing packages from the conveyor belt (FIFO).
+ * 2. **Constraint Validation:** ensuring a package fits within the Truck's
+ * remaining Capacity ($W$) and Volume ($V$).
+ * 3. **Loading:** Updating the shared memory state of the truck.
+ * 4. **Fleet Control:** Signaling trucks to depart when full or when a package
+ * cannot fit.
+ */
 class Dispatcher {
 private:
+  /** @brief Pointer to the Belt subsystem (source of packages). */
   Belt *belt;
+
+  /** @brief Pointer to the system's Shared Memory state. */
   SharedState *shm;
 
-  std::function<void()> lock_dock_fn;
-  std::function<void()> unlock_dock_fn;
-  std::function<void(pid_t, SignalType)> send_signal_fn;
+  /** @name IPC Synchronization Callbacks
+   * Functions injected to handle synchronization without tight coupling to the
+   * Manager.
+   * @{ */
+  std::function<void()> lock_dock_fn;   /**< Acquires Dock Mutex. */
+  std::function<void()> unlock_dock_fn; /**< Releases Dock Mutex. */
+  std::function<void(pid_t, SignalType)>
+      send_signal_fn; /**< Sends IPC signals. */
+                      /** @} */
 
 public:
+  /**
+   * @brief Constructs a new Dispatcher instance.
+   *
+   * @param b Pointer to the Belt object.
+   * @param s Pointer to Shared Memory.
+   * @param lock_dock Callback for locking the dock.
+   * @param unlock_dock Callback for unlocking the dock.
+   * @param send_signal Callback for sending signals to trucks.
+   */
   Dispatcher(Belt *b, SharedState *s, std::function<void()> lock_dock,
              std::function<void()> unlock_dock,
              std::function<void(pid_t, SignalType)> send_signal)
       : belt(b), shm(s), lock_dock_fn(lock_dock), unlock_dock_fn(unlock_dock),
         send_signal_fn(send_signal) {}
 
+  /**
+   * @brief Processes a single package from the belt.
+   *
+   * This method implements the core routing algorithm:
+   * 1. **Pop:** Retrieves a package from the belt (blocking if empty).
+   * 2. **Load Loop:** Attempts to load the package onto the current truck.
+   * - **Constraint Check:** Verifies if `current + new <= max` for both Weight
+   * and Volume.
+   * - **Success:** Updates truck state. If truck reaches ~99% capacity or max
+   * item count, sends `SIGNAL_DEPARTURE`.
+   * - **Failure (Does not fit):** Sends `SIGNAL_DEPARTURE` to force the full
+   * truck away, then waits for a new truck.
+   * 3. **Retry:** Loops until the package is successfully loaded onto a
+   * (potentially new) truck.
+   *
+   * @note This method handles the synchronization critical section for the
+   * Dock.
+   */
   void processNextPackage() {
     Package pkg = belt->pop();
 
@@ -87,6 +146,12 @@ public:
     }
   }
 
+  /**
+   * @brief Main service loop.
+   *
+   * Continuously processes packages until the shared memory state indicates
+   * the system is no longer running.
+   */
   void run() {
     spdlog::info("[dispatcher] Service started. Controlling the dock.");
 

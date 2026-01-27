@@ -2,6 +2,11 @@
  * @file Manager.h
  * @brief Central Orchestrator for IPC resource management and component
  * coordination.
+ *
+ * This file defines the `Manager` class, which serves as the backbone of the
+ * multi-process simulation. It handles the low-level details of System V IPC
+ * (Shared Memory, Semaphores, Message Queues) and provides a high-level API
+ * for components to interact with these resources.
  */
 
 #pragma once
@@ -25,25 +30,66 @@
 
 /**
  * @class Manager
- * @brief The heart of the Warehouse System IPC.
- * * Acts as a Facade for System V IPC (SHM, SEM, MSG).
- * * Orchestrates components: Belt, Truck, Dispatcher, SessionManager.
+ * @brief The heart of the Warehouse System IPC architecture.
+ *
+ * The Manager class acts as a **Facade** for the operating system's IPC
+ * mechanisms. It is responsible for:
+ * 1. **Resource Lifecycle:** Creating, attaching, and destroying Shared Memory,
+ * Semaphores, and Message Queues.
+ * 2. **Component Orchestration:** Initializing and holding ownership of logic
+ * controllers (Belt, Truck, Dispatcher, Express, SessionManager).
+ * 3. **Synchronization Primitive Abstraction:** Providing easy-to-use methods
+ * for locking/unlocking mutexes (Belt, Dock) and signaling semaphores.
+ * 4. **Inter-Process Communication:** Abstracting `msgsnd` and `msgrcv` for
+ * signal passing.
  */
 class Manager {
 protected:
-  int shm_id;       /**< Shared Memory ID. */
-  int sem_id;       /**< Semaphore Set ID. */
-  int msg_id;       /**< Message Queue ID. */
-  SharedState *shm; /**< Pointer to Shared Memory. */
-  bool is_owner;    /**< True if this process created the IPC resources. */
+  /** @brief System V Shared Memory Segment ID. */
+  int shm_id;
+
+  /** @brief System V Semaphore Set ID. */
+  int sem_id;
+
+  /** @brief System V Message Queue ID. */
+  int msg_id;
+
+  /** @brief Pointer to the mapped shared memory structure. */
+  SharedState *shm;
+
+  /**
+   * @brief Ownership flag.
+   * If true, this process is responsible for initializing memory structures
+   * on startup and marking IPC resources for destruction on exit.
+   */
+  bool is_owner;
 
 public:
+  /** @brief Manages user sessions and authentication logic. */
   std::unique_ptr<SessionManager> session_store;
+
+  /** @brief Manages the conveyor belt logic (push/pop/limits). */
   std::unique_ptr<Belt> belt;
+
+  /** @brief Manages truck behavior (docking/randomization). */
   std::unique_ptr<Truck> truck;
+
+  /** @brief Manages the routing logic between Belt and Truck. */
   std::unique_ptr<Dispatcher> dispatcher;
+
+  /** @brief Manages high-priority Express (P4) deliveries. */
   std::unique_ptr<Express> express;
 
+  /**
+   * @brief Constructs the Manager and initializes IPC resources.
+   *
+   * @param owner If true, the constructor attempts to clean up old resources,
+   * creates new ones (IPC_CREAT), and initializes the SharedState structure.
+   * If false, it simply connects to existing resources.
+   *
+   * @throws Exits the process if any IPC system call (`shmget`, `semget`,
+   * `msgget`) fails.
+   */
   Manager(bool owner = false) : is_owner(owner) {
     int flags = is_owner ? (IPC_CREAT | 0600) : 0600;
 
@@ -120,6 +166,9 @@ public:
         [this](pid_t target, SignalType s) { this->sendSignal(target, s); });
   }
 
+  /**
+   * @brief Destructor. Detaches shared memory and removes resources if owner.
+   */
   virtual ~Manager() {
     if (shmdt(shm) == -1) {
       spdlog::warn("[ipc manager] shmdt failed: {}", std::strerror(errno));
@@ -133,8 +182,19 @@ public:
     }
   }
 
+  /**
+   * @brief Accessor for the shared memory pointer.
+   * @return Pointer to the SharedState structure.
+   */
   SharedState *getState() { return shm; }
 
+  /**
+   * @brief Generic wrapper for `semop` system call.
+   * Handles EINTR (interrupts) and errors gracefully.
+   *
+   * @param semIdx The index of the semaphore in the set (enum SemIndex).
+   * @param op The operation to perform (-1 for Wait/P, +1 for Signal/V).
+   */
   void semOperation(SemIndex semIdx, int op) {
     struct sembuf sb;
     sb.sem_num = static_cast<int>(semIdx);
@@ -155,15 +215,36 @@ public:
     }
   }
 
+  /** @brief Acquires the Belt Mutex (Critical Section Entry). */
   void lockBelt() { semOperation(SEM_MUTEX_BELT, -1); }
+
+  /** @brief Releases the Belt Mutex (Critical Section Exit). */
   void unlockBelt() { semOperation(SEM_MUTEX_BELT, 1); }
+
+  /** @brief Decrements Empty Slots semaphore (Producer Wait). */
   void waitForEmptySlot() { semOperation(SEM_EMPTY_SLOTS, -1); }
+
+  /** @brief Increments Empty Slots semaphore (Consumer Signal). */
   void signalSlotFreed() { semOperation(SEM_EMPTY_SLOTS, 1); }
+
+  /** @brief Decrements Full Slots semaphore (Consumer Wait). */
   void waitForPackage() { semOperation(SEM_FULL_SLOTS, -1); }
+
+  /** @brief Increments Full Slots semaphore (Producer Signal). */
   void signalPackageAdded() { semOperation(SEM_FULL_SLOTS, 1); }
+
+  /** @brief Acquires the Loading Dock Mutex. */
   void lockDock() { semOperation(SEM_DOCK_MUTEX, -1); }
+
+  /** @brief Releases the Loading Dock Mutex. */
   void unlockDock() { semOperation(SEM_DOCK_MUTEX, 1); }
 
+  /**
+   * @brief Sends a command signal to a specific process via Message Queue.
+   *
+   * @param target_pid The PID of the recipient process (used as mtype).
+   * @param type The command to send (SignalType).
+   */
   void sendSignal(pid_t target_pid, SignalType type) {
     CommandMessage msg;
     msg.mtype = target_pid;
@@ -178,6 +259,12 @@ public:
     }
   }
 
+  /**
+   * @brief Blocking wait for a signal addressed to this process.
+   *
+   * @param my_pid The PID of the calling process (used to filter messages).
+   * @return The received SignalType.
+   */
   SignalType receiveSignalBlocking(pid_t my_pid) {
     CommandMessage msg;
     if (msgrcv(msg_id, &msg, sizeof(int), my_pid, 0) != -1) {
@@ -186,6 +273,12 @@ public:
     return SIGNAL_NONE;
   }
 
+  /**
+   * @brief Non-Blocking check for a signal (IPC_NOWAIT).
+   *
+   * @param my_pid The PID of the calling process.
+   * @return The received SignalType, or SIGNAL_NONE if queue is empty.
+   */
   SignalType receiveSignalNonBlocking(pid_t my_pid) {
     CommandMessage msg;
     if (msgrcv(msg_id, &msg, sizeof(int), my_pid, IPC_NOWAIT) != -1) {

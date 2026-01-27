@@ -335,16 +335,20 @@ TEST_F(ManagerTest, Dispatcher_FullTruckTriggersDeparture) {
 
   m.lockDock();
   std::memset(&(m.getState()->dock_truck), 0, sizeof(TruckState));
+
   m.getState()->dock_truck.is_present = true;
   m.getState()->dock_truck.id = test_pid;
+
   m.getState()->dock_truck.max_load = 1;
   m.getState()->dock_truck.max_weight = 100.0;
+  m.getState()->dock_truck.max_volume = 10.0;
+
   m.unlockDock();
 
   Package p;
   p.weight = 10.0;
+  p.volume = 0.5;
   m.belt->push(p);
-
   m.dispatcher->processNextPackage();
 
   SignalType sig = m.receiveSignalNonBlocking(test_pid);

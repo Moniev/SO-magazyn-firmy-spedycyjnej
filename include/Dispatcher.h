@@ -57,7 +57,8 @@ public:
                        truck.current_weight, truck.max_weight,
                        truck.current_volume, truck.max_volume);
 
-          if (truck.current_weight >= truck.max_weight * 0.99 ||
+          if (truck.current_load >= truck.max_load ||
+              truck.current_weight >= truck.max_weight * 0.99 ||
               truck.current_volume >= truck.max_volume * 0.99) {
 
             spdlog::info("[dispatcher] Truck #{} FULL (Limit reached). Sending "

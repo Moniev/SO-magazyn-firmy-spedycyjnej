@@ -51,19 +51,26 @@ TEST_F(DispatcherTest, SuccessfulLoad) {
   ASSERT_NE(m.getState(), nullptr) << "Shared memory not attached!";
 
   m.lockDock();
-  m.getState()->dock_truck.is_present = true;
-  m.getState()->dock_truck.id = 101;
 
-  m.getState()->dock_truck.max_load = 2;
-  m.getState()->dock_truck.max_weight = 100.0;
+  TruckState &truck = m.getState()->dock_truck;
+  truck.is_present = true;
+  truck.id = 101;
 
-  m.getState()->dock_truck.current_load = 0;
-  m.getState()->dock_truck.current_weight = 0.0;
+  truck.max_load = 100;
+  truck.max_weight = 100.0;
+  truck.max_volume = 10.0;
+
+  truck.current_load = 0;
+  truck.current_weight = 0.0;
+  truck.current_volume = 0.0;
+
   m.unlockDock();
 
   Package p;
   p.id = 500;
   p.weight = 10.5;
+  p.volume = 0.1;
+
   m.belt->push(p);
 
   m.dispatcher->processNextPackage();
@@ -71,5 +78,6 @@ TEST_F(DispatcherTest, SuccessfulLoad) {
   m.lockDock();
   EXPECT_EQ(m.getState()->dock_truck.current_load, 1);
   EXPECT_DOUBLE_EQ(m.getState()->dock_truck.current_weight, 10.5);
+  EXPECT_DOUBLE_EQ(m.getState()->dock_truck.current_volume, 0.1);
   m.unlockDock();
 }

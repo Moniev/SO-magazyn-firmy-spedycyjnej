@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 # Magazyn Firmy Spedycyjnej – Raport Projektowy
 
 **Autor:** [Robert Moń]
@@ -394,4 +393,3 @@ ryzyko deadlocków i błędów synchronizacji.
 Projekt umożliwił praktyczne poznanie synchronizacji procesów, IPC i obsługi sygnałów.
 Największym problemem była eliminacja race condition z maina terminal managera i zapewnienie
 atomowości operacji na pamięci współdzielonej.
->>>>>>> Stashed changes

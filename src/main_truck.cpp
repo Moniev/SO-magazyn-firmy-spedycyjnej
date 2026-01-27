@@ -1,14 +1,9 @@
-/**
- * @file express_main.cpp
- * @brief High-priority worker reacting to SIGNAL_EXPRESS_LOAD.
- * * Unlike other workers, this process blocks on the Message Queue. When a
- * VIP signal is intercepted, it executes a direct-to-truck load, bypassing
- * the standard conveyor belt sequence.
- */
 #include "../include/Config.h"
 #include "../include/Manager.h"
 #include <atomic>
 #include <csignal>
+#include <iostream>
+#include <string>
 
 std::atomic<bool> truck_stop{false};
 
@@ -20,31 +15,42 @@ void signalHandler(int signum) {
 
 struct TruckSessionGuard {
   Manager &m;
-  TruckSessionGuard(Manager &manager) : m(manager) {
-    if (!m.session_store->login("System-TruckPool", UserRole::Operator, 0, 5)) {
+
+  TruckSessionGuard(Manager &manager, const std::string &username)
+      : m(manager) {
+    if (!m.session_store->login(username, UserRole::Operator, 0, 1)) {
       throw std::runtime_error(
-          "TruckPool login failed. All docking bays occupied?");
+          "Login failed for user '" + username +
+          "'. Is the session table full or user already logged in?");
     }
-    spdlog::info("[truck] Driver logged in. Docking permission granted.");
+    spdlog::info(
+        "[truck] Driver logged in as '{}'. Docking permission granted.",
+        username);
   }
+
   ~TruckSessionGuard() {
     m.session_store->logout();
     spdlog::info("[truck] Driver logged out. Bay cleared.");
   }
 };
 
-int main() {
+int main(int argc, char *argv[]) {
   try {
-    Config::get().setupLogger("system-truck");
+    int truck_id = (argc > 1) ? std::atoi(argv[1]) : 1;
+    std::string id_str = std::to_string(truck_id);
+
+    Config::get().setupLogger("truck-" + id_str);
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
     Manager manager(false);
-    TruckSessionGuard session(manager);
 
-    spdlog::info("[truck] Truck process online. Heading to the dock...");
+    std::string unique_username = "Truck_" + id_str;
+    TruckSessionGuard session(manager, unique_username);
 
+    spdlog::info("[truck] Truck process #{} online. Heading to the dock...",
+                 truck_id);
     manager.truck->run();
 
   } catch (const std::exception &e) {

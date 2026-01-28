@@ -134,6 +134,30 @@ public:
       SignalType sig = wait_for_signal_fn(my_pid);
 
       if (sig == SIGNAL_END_WORK || !shm->running) {
+        lock_dock_fn();
+
+        if (shm->dock_truck.id == my_pid &&
+            shm->dock_truck.current_weight > 0.1) {
+          shm->trucks_completed++;
+          shm->dock_truck.is_present = false;
+
+          spdlog::warn("[truck-{}] SHUTDOWN SIGNAL but cargo present! "
+                       "Delivering final load ({:.1f}kg)...",
+                       my_pid, shm->dock_truck.current_weight);
+
+          unlock_dock_fn();
+
+          std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+          spdlog::info("[truck-{}] Final delivery complete. Shutting down.",
+                       my_pid);
+        } else {
+          if (shm->dock_truck.id == my_pid) {
+            shm->dock_truck.is_present = false;
+          }
+          unlock_dock_fn();
+          spdlog::info("[truck-{}] Empty truck shutting down immediately.",
+                       my_pid);
+        }
         break;
       }
 

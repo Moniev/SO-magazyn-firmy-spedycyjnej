@@ -84,13 +84,14 @@ int main() {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  int num_trucks = 3;
+  int num_trucks = 2;
   for (int i = 1; i <= num_trucks; ++i) {
     spawnChild("./build/truck", "truck", std::to_string(i));
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
 
-  for (int i = 1; i <= 3; ++i) {
+  int num_workers = 3;
+  for (int i = 1; i <= num_workers; ++i) {
     spawnChild("./build/worker", "worker", std::to_string(i));
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }

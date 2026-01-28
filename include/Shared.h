@@ -21,11 +21,11 @@
 /** @name Warehouse Capacity Constraints
  * Constants defining physical and logical limits of the conveyor belt.
  * @{ */
-constexpr int MAX_WORKERS_PER_BELT = 3;
+constexpr int MAX_WORKERS_PER_BELT = 100;
 constexpr int MAX_BELT_CAPACITY_K =
     10; /**< Maximum number of slots in the circular buffer. */
 constexpr double MAX_BELT_WEIGHT_M =
-    100.0; /**< Maximum total weight allowed on the belt. */
+    1000.0; /**< Maximum total weight allowed on the belt. */
 /** @} */
 
 /** @name Package Volume Constants
@@ -55,7 +55,7 @@ constexpr int MSG_KEY_ID = 9012; /**< Key for Message Queue allocation. */
 constexpr int MAX_PACKAGE_HISTORY =
     6; /**< Maximum number of audit entries per package. */
 constexpr int MAX_USERS_SESSIONS =
-    10; /**< Maximum number of concurrent process sessions. */
+    210; /**< Maximum number of concurrent process sessions. */
 /** @} */
 
 /** @brief Type alias for Organization Identifier. It was MEANT to be used but

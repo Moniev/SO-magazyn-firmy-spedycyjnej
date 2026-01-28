@@ -1,7 +1,7 @@
 # Magazyn Firmy Spedycyjnej – Raport Projektowy
 
 **Autor:** Robert Moń
-**Nr albumu:** MINISTRY-OF-TRUTH-HAS-CENSORED-THIS-LINE
+**Nr albumu:** [CENSORED]
 **Repozytorium:** https://github.com/Moniev/SO-magazyn-firmy-spedycyjnej
 
 ---
@@ -251,3 +251,40 @@ z wykorzystaniem CTest.
 Dodatkowo:
 - `format` automatycznie formatuje kod źródłowy przy użyciu `clang-format`,
 - `lint` weryfikuje zgodność stylu
+
+---
+
+### 9. Przykładowe logi działania systemu
+
+Poniżej przedstawiono wybrane fragmenty logów z działania symulacji,
+ilustrujące poprawną synchronizację procesów oraz komunikację IPC.
+
+#### 9.1 Inicjalizacja systemu i uruchomienie workerów
+
+![Inicjalizacja systemu](docs/images/sim_start.png)
+![Procesy](docs/images/processes.png)
+
+
+#### 9.4 Kontrolowane zakończenie symulacji i sprzątanie IPC
+
+![Shutdown](docs/images/shutdown.png)
+
+#### 9.5 100 ciężarówek i 100 pracowników, belt dla K=1000, wyniki dla 1min działania
+
+![Test manualny #1](docs/raport/simulation_report_1.txt)
+
+#### 9.6 100 ciężarówek i 100 pracowników, belt dla K=100, wyniki dla 1min działania
+
+![Test manualny #2](docs/raport/simulation_report_2.txt)
+
+#### 9.7 100 ciężarówek i 10 pracowników, belt dla K=100, wyniki dla 1min działania
+
+![Test manualny #3](docs/raport/simulation_report_3.txt)
+
+#### 9.8 10 ciężarówek i 100 pracowników, belt dla K=100, wyniki dla 1min działania
+
+![Test manualny #4](docs/res/simulation_report_4.txt)
+
+
+
+

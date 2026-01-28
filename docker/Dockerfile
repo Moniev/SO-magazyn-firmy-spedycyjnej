@@ -32,6 +32,8 @@ COPY --from=builder /app/build/dispatcher ./build/
 COPY --from=builder /app/build/express ./build/
 COPY --from=builder /app/build/truck ./build/
 COPY --from=builder /app/build/terminal ./build/
+COPY --from=builder /app/build/worker ./build/
+
 
 COPY --from=builder /app/run.sh .
 

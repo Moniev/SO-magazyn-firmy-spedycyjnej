@@ -98,19 +98,19 @@ public:
    * This method executes the continuous cycle of the transport vehicle:
    * 1. **Queueing:** Checks if the dock is free. If occupied, sleeps for 1s.
    * 2. **Docking:** If free, acquires the dock and calls `randomizeTruckSpecs`.
-   * 3. **Service Wait:** Blocks on `wait_for_signal_fn`. The truck does
-   * *nothing* while waiting here; it is purely passive, being loaded by other
-   * processes.
+   * 3. **Service Wait:** Blocks on `wait_for_signal_fn`. The truck is passive
+   * here, waiting to be loaded by Dispatcher or Express Worker.
    * 4. **Signal Handling:**
-   * - `SIGNAL_DEPARTURE`: Truck leaves the dock to deliver goods.
-   * - `SIGNAL_END_WORK`: Truck terminates operations.
-   * 5. **Departure:** Updates statistics (`trucks_completed`) and clears dock
-   * state.
-   * 6. **Delivery Simulation:** Sleeps for a random duration ($T_i$) between
-   * 3-8 seconds.
+   * - `SIGNAL_DEPARTURE`: Normal cycle. Truck leaves the dock to deliver goods.
+   * - `SIGNAL_END_WORK`: **Graceful Shutdown.** The truck checks if it has any
+   * cargo on board. If `current_weight > 0`, it performs one last delivery
+   * cycle (updates stats, simulates travel time) to ensure no goods remain
+   * undelivered. If empty, it terminates immediately.
+   * 5. **Departure & Delivery:** Updates statistics (`trucks_completed`),
+   * clears dock state, and simulates travel time ($T_i$) between 3-8 seconds.
    *
-   * @note This function runs until `SIGNAL_END_WORK` is received or
-   * `shm->running` becomes false.
+   * @note This function runs until `SIGNAL_END_WORK` is received (and
+   * processed) or `shm->running` becomes false.
    */
   void run() {
     spdlog::info("[truck-{}] Engine started. Joining fleet.", my_pid);

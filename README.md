@@ -262,12 +262,13 @@ ilustrujące poprawną synchronizację procesów oraz komunikację IPC.
 #### 9.1 Inicjalizacja systemu i uruchomienie workerów
 
 ![Inicjalizacja systemu](docs/images/sim_start.png)
+![Terminal](docs/images/term.png)
 ![Procesy](docs/images/processes.png)
 
 
 #### 9.4 Kontrolowane zakończenie symulacji i sprzątanie IPC
 
-![Shutdown](docs/images/shutdown.png)
+![Shutdown](docs/images/sim_end.png)
 
 #### 9.5 100 ciężarówek i 100 pracowników, belt dla K=1000, wyniki dla 1min działania
 

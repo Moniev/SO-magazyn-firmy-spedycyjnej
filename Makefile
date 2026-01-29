@@ -125,7 +125,7 @@ rebuild: clean build
 package: build
 	@echo -e "$(CYAN)[info] Packaging binaries into $(PACKAGE_NAME)...$(RESET)"
 	@tar -czf $(PACKAGE_NAME) \
-		-C $(BUILD_DIR) main belt dispatcher express truck terminal \
+		-C $(BUILD_DIR) main belt dispatcher express truck terminal worker \
 		-C . run.sh README.md
 	@echo -e "$(GREEN)[success] Package ready: $(PACKAGE_NAME)$(RESET)"
 
